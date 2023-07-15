@@ -2,4 +2,3 @@ APScheduler==0.0.0
 pydbus==0.6.0
 pyephem==9.99
 Requests==2.31.0
-Hamlib==4.0
