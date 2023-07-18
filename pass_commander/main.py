@@ -40,6 +40,8 @@ import logging as log
 import configparser
 from functools import reduce
 import operator
+
+sys.path.append(os.path.dirname(__file__))
 from Rotator import Rotator
 from Navigator import Navigator
 from Tracker import Tracker
