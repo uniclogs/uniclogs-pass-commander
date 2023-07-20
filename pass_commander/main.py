@@ -58,9 +58,10 @@ if not len(config.read(config_file)):
         os.makedirs(os.path.dirname(config_file))
     with open(config_file, "w") as f:
         f.write(
-            """[Main]
+            """# Be sure to replace all <hint text> including the angle brackets!
+[Main]
 owmid = <open weather map API key>
-edl = <EDL command to send>
+edl = <EDL command to send, hex formatted with no 0x prefix>
 txgain = 47
 
 [Hosts]
