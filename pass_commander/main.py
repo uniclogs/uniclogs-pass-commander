@@ -54,7 +54,8 @@ config_file = os.path.expanduser("~/.config/OreSat/pass_commander.ini")
 config = configparser.ConfigParser()
 if not len(config.read(config_file)):
     print("Config file seems to be missing. Initializing.")
-    os.makedirs(os.path.dirname(config_file))
+    if not os.path.exists(os.path.dirname(config_file)):
+        os.makedirs(os.path.dirname(config_file))
     with open(config_file, "w") as f:
         f.write(
             """[Main]
@@ -77,6 +78,9 @@ name = <station name or callsign>
     print(f"Please edit {config_file} before running again.")
     sys.exit(1)
 
+if '<' in [v[0] for s in config.keys() for v in config[s].values()]:
+    print(f"Please edit {config_file} and replace everything in <angle brackets>")
+    sys.exit(1)
 
 # This is just shoehorned in here and ugly. Please fix!
 def confget(conf, tree):
