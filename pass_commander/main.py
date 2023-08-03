@@ -47,6 +47,7 @@ from Navigator import Navigator
 from Tracker import Tracker
 from Radio import Radio
 from Station import Station
+from Logger import set_log
 
 
 # Config File
@@ -141,6 +142,7 @@ tle_cache = {
 log.basicConfig()
 log.getLogger("apscheduler").setLevel(log.ERROR)
 
+logger = set_log()
 
 class Main:
     def __init__(
@@ -175,9 +177,9 @@ class Main:
 
     def require_clock_sync(self):
         while not self.NTPSynchronized():
-            print("System clock is not synchronized. Sleeping 60 seconds.")
+            logger.info("System clock is not synchronized. Sleeping 60 seconds.")
             sleep(60)
-        print("System clock is synchronized.")
+        logger.info("System clock is synchronized.")
 
     def edl(self, packet):
         self.rad.command(
@@ -187,7 +189,7 @@ class Main:
         self.rad.edl(packet)
 
     def autorun(self, count=9999):
-        print(f"Running for {count} passes")
+        logger.info(f"Running for {count} passes")
         while count > 0:
             self.require_clock_sync()
             np = self.track.sleep_until_next_pass()
@@ -195,7 +197,7 @@ class Main:
             self.work_pass()
             seconds = (np[4] - ephem.now()) / ephem.second + 1
             if seconds > 0:
-                print(f"Sleeping {seconds:.3f} seconds until pass is really over.")
+                logger.info(f"Sleeping {seconds:.3f} seconds until pass is really over.")
                 sleep(seconds)
             count -= 1
 
@@ -204,71 +206,71 @@ class Main:
             return self.test_bg_rotator()
         degc = self.sta.gettemp()
         if degc > 30:
-            print(f"Temperature is too high ({degc}°C). Skipping this pass.")
+            logger.error(f"Temperature is too high ({degc}°C). Skipping this pass.")
             sleep(1)
             return
         self.packet = bytes.fromhex(packet)
-        print("Packet to send: ", self.packet)
+        logger.info("Packet to send: ", self.packet)
         self.track.calibrate()
-        print("Adjusted for temp/pressure")
+        logger.info("Adjusted for temp/pressure")
         self.update_rotator()
-        print("Started rotator movement")
+        logger.info("Started rotator movement")
         sleep(2)
         self.scheduler.add_job(self.update_rotator, "interval", seconds=0.5)
-        print("Scheduled rotator")
+        logger.info("Scheduled rotator")
         self.rad.command("set_tx_selector", "edl")
-        print("Selected EDL TX")
+        logger.info("Selected EDL TX")
         self.rad.command("set_tx_gain", tx_gain)
-        print("Set TX gain")
+        logger.info("Set TX gain")
         sleep(2)
-        print("Rotator should be moving by now")
+        logger.info("Rotator should be moving by now")
         while self.rot.share["moving"] == True:
             sleep(0.1)
         if self.rot.share["moving"]:
-            print("Rotator communication anomaly detected. Skipping this pass.")
+            logger.info("Rotator communication anomaly detected. Skipping this pass.")
             self.scheduler.remove_all_jobs()
             sleep(1)
             return
-        print("Stopped moving")
+        logger.info("Stopped moving")
         self.sta.pa_on()
-        print("Station amps on")
+        logger.info("Station amps on")
         sleep(0.2)
         self.sta.ptt_on()
-        print("Station PTT on")
+        logger.info("Station PTT on")
         self.rad.ident()
-        print("Sent Morse ident")
+        logger.info("Sent Morse ident")
         self.sta.ptt_off()
-        print("Station PTT off")
-        print("Waiting for bird to reach 10°el")
+        logger.info("Station PTT off")
+        logger.info("Waiting for bird to reach 10°el")
         while self.track.share["target_el"] < 10:
             sleep(0.1)
-        print("Bird above 10°el")
+        logger.info("Bird above 10°el")
         while self.track.share["target_el"] >= 10:
             self.sta.ptt_on()
-            print("Station PTT on")
+            logger.info("Station PTT on")
             self.edl(self.packet)
-            print("Sent EDL")
+            logger.info("Sent EDL")
             # FIXME TIMING: wait for edl to finish sending
             sleep(0.5)
             self.sta.ptt_off()
-            print("Station PTT off")
+            logger.info("Station PTT off")
             sleep(3.5)
         self.scheduler.remove_all_jobs()
-        print("Removed scheduler jobs")
+        logger.info("Removed scheduler jobs")
         self.sta.ptt_on()
-        print("Station PTT on")
+        logger.info("Station PTT on")
         self.rad.ident()
-        print("Sent Morse ident")
+        logger.info("Sent Morse ident")
         self.sta.ptt_off()
-        print("Station PTT off")
+        logger.info("Station PTT off")
         self.rad.command("set_tx_gain", 3)
-        print("Set TX gain to min")
+        logger.info("Set TX gain to min")
         self.rot.park()
-        print("Parked rotator")
-        print("Waiting for PA to cool")
+        logger.info("Parked rotator")
+        logger.info("Waiting for PA to cool")
         sleep(120)
         self.sta.pa_off()
-        print("Station shutdown TX amp")
+        logger.info("Station shutdown TX amp")
 
     def update_rotator(self):
         azel = self.nav.azel(self.track.freshen().azel())

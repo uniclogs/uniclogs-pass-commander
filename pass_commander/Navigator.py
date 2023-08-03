@@ -22,7 +22,9 @@
 
 import ephem
 from math import cos, degrees as deg
+from Logger import set_log
 
+logger = set_log()
 
 class Navigator:
     """Navigator class for pass_commander"""
@@ -50,7 +52,7 @@ class Navigator:
             self.nav_mode = self.nav_straight  # FIXME
             """ This probably means we need to extend into the 450° operating area """
         # print('rise:%s rise:%.3f°az maxel:%s max:%.3f°el set:%s set:%.3f°az'%(rise_time, deg(rise_az), maxel_time, deg(max_elevation), set_time, deg(set_az)))
-        print(
+        logger.info(
             f"rise:{rise_time} rise:{deg(rise_az):.3f}°az maxel:{maxel_time} "
             f"max:{deg(max_elevation):.3f}°el set:{set_time} set:{deg(set_az):.3f}°az"
         )
@@ -61,10 +63,10 @@ class Navigator:
             if self.az_n_hem(self.flip_az):
                 self.flip_az = self.rot_pi(self.flip_az)
             self.nav_mode = self.nav_flip
-            print(f"Flip at {deg(self.flip_az):.3f}")
+            logger.info(f"Flip at {deg(self.flip_az):.3f}")
         # print('Zero_cross:%r mode:%s start:%s rise:%.3f°az peak:%.3f°az set:%.3f°az' %
         #        (z, self.nav_mode.__name__, rise_time, deg(rise_az), deg(self.maxel_az), deg(set_az)))
-        print(
+        logger.info(
             f"Zero_cross:{z} mode:{self.nav_mode.__name__} start:{rise_time} "
             f"rise:{deg(rise_az):.3f}°az peak:{deg(self.maxel_az):.3f}°az set:{deg(set_az):.3f}°az"
         )
@@ -101,7 +103,7 @@ class Navigator:
     def azel(self, azel):
         navazel = self.nav_mode(azel)
         # print('Navigation corrected from \t% 3.3f°az % 3.3f°el to % 3.3f°az % 3.3f°el' % tuple(deg(x) for x in (*azel, *navazel)))
-        print(
+        logger.info(
             f'{"Navigation corrected from": <28}{deg(azel[0]): >7.3f}°az {deg(azel[1]): >7.3f}°el to {deg(navazel[0]): >7.3f}°az {deg(navazel[1]): >7.3f}°el'
         )
         return navazel

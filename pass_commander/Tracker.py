@@ -28,7 +28,9 @@ from math import degrees as deg
 from multiprocessing import Manager
 from time import sleep
 import ephem
+from Logger import set_log
 
+logger = set_log()
 
 class Tracker:
     def __init__(
@@ -55,12 +57,12 @@ class Tracker:
 
     def fetch_tle(self):
         if self.local_only and self.tle_cache and self.sat_id in self.tle_cache:
-            print("using cached TLE")
+            logger.info("using cached TLE")
             tle = self.tle_cache[self.sat_id]
         elif self.local_only and self.query == "CATNR":
             fname = f'{os.environ["HOME"]}/.config/Gpredict/satdata/{self.sat_id}.sat'
             if os.path.isfile(fname):
-                print("using Gpredict's cached TLE")
+                logger.info("using Gpredict's cached TLE")
                 with open(fname) as file:
                     lines = file.readlines()[3:6]
                     tle = [line.rstrip().split("=")[1] for line in lines]
@@ -78,7 +80,7 @@ class Tracker:
 
     def calibrate(self):
         if self.local_only:
-            print("not fetching weather for calibration")
+            logger.error("not fetching weather for calibration")
             return
         if not self.owmid:
             raise ValueError("missing OpenWeatherMap API key")
@@ -126,7 +128,7 @@ class Tracker:
         # print(self.obs.date, str(np[0]), deg(np[1]), str(np[2]), deg(np[3]), str(np[4]), deg(np[5]))
         if np[0] > np[4] and self.obs.date < np[2]:
             # FIXME we could use np[2] instead of np[4] to see if we are in the first half of the pass
-            print("In a pass now!")
+            logger.info("In a pass now!")
             self.obs.date = ephem.Date(self.obs.date - (30 * ephem.minute))
             np = self.obs.next_pass(self.sat)
             return np
@@ -135,7 +137,7 @@ class Tracker:
             self.obs.date = np[4]
             np = self.obs.next_pass(self.sat)
         seconds = (np[0] - ephem.now()) / ephem.second
-        print(
+        logger.info(
             f"Sleeping {timedelta(seconds=seconds)} until next rise time {ephem.localtime(np[0])} for a {deg(np[3]):.2f}°el pass."
         )
         # print("Sleeping %.3f seconds until next rise time %s for a %.2f°el pass." % (seconds, ephem.localtime(np[0]), deg(np[3])))

@@ -22,7 +22,9 @@
 
 import Hamlib
 from multiprocessing import Manager
+from Logger import set_log
 
+logger = set_log()
 
 class Rotator:
     def __init__(
@@ -51,7 +53,7 @@ class Rotator:
 
     def go(self, az, el):
         if self.local_only or self.no_rot:
-            print(f"Not going to {az: >7.3f}°az {el: >7.3f}°el")
+            logger.info(f"Not going to {az: >7.3f}°az {el: >7.3f}°el")
             return
         if az < self.amin_az:
             az = self.amin_az
@@ -74,32 +76,32 @@ class Rotator:
             self.r.get_position()
         )  # Second request gives us the actual present location - why?
         if self.r.error_status:
-            print(
+            logger.error(
                 f"Rotator controller daemon rotctld is returning error {self.r.error_status}"
             )
             self.share["moving"] = self.r.error_status
             self.r.close()
             self.r.open()
             if self.r.error_status:
-                print(
+                logger.error(
                     f"rotctld is returning error {self.r.error_status} from reconnect attempt"
                 )
                 # FIXME Figure out a thread-safe way to rais an error and abort this pass. Maybe send an alert, too?
                 return
             else:
-                print(f"Rotator controller reconnected")
+                logger.info(f"Rotator controller reconnected")
                 return self.go(az, el)
         elif (
             self.share["moving"] == True
             and now_az == self.last_reported_az
             and now_el == self.last_reported_el
         ):
-            print(f"Rotator movement failed")
+            logger.error(f"Rotator movement failed")
             self.share["moving"] = "Failed"
             # FIXME Figure out a thread-safe way to rais an error and abort this pass. Maybe send an alert, too?
         elif abs(az - now_az) > 5 or abs(el - now_el) > 3:
             # print('Moving! from \t\t\t% 3.3f°az % 3.3f°el to % 3.3f°az % 3.3f°el' % (now_az, now_el, az, el))
-            print(
+            logger.info(
                 f'{"Moving from": <28}{now_az: >7.3f}°az {now_el: >7.3f}°el to {az: >7.3f}°az {el: >7.3f}°el'
             )
             self.share["moving"] = True
