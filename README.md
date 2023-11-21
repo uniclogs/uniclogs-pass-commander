@@ -13,8 +13,7 @@ This software controlls the local functions of a [UniClOGS](https://www.oresat.o
 ## Installing
 ```sh
 git clone https://github.com/uniclogs/uniclogs-pass_commander.git
-sudo apt install python3-hamlib
-pip install -r uniclogs-pass_commander/requirements.txt
+sudo apt install python3-pip python3-hamlib python3-pydbus python3-requests python3-apscheduler python3-ephem
 python3 uniclogs-pass_commander/
 ```
 You should receive instructions for editing a config file. Go do that now.
