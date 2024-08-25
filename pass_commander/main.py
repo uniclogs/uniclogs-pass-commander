@@ -38,6 +38,7 @@ import os
 import pydbus
 import logging as log
 import configparser
+import json
 from functools import reduce
 import operator
 
@@ -123,20 +124,11 @@ tx_gain = int(confget(config, ["Main", "txgain"]))
 # no_tx=True  # XXX
 # no_rot=True  # XXX
 
-
-tle_cache = {
-    "OreSat0": [
-        "ORESAT0",
-        "1 52017U 22026K   23092.57919752  .00024279  00000+0  10547-2 0  9990",
-        "2 52017  97.5109  94.8899 0023022 355.7525   4.3512 15.22051679 58035",
-    ],
-    "2022-026K": [
-        "ORESAT0",
-        "1 52017U 22026K   23092.57919752  .00024279  00000+0  10547-2 0  9990",
-        "2 52017  97.5109  94.8899 0023022 355.7525   4.3512 15.22051679 58035",
-    ],
-    "end": True,
-}
+tle_cache = {}
+tle_cache_file = os.path.expanduser("~/.config/OreSat/tle_cache.json")
+if os.path.isfile(tle_cache_file):
+    with open(tle_cache_file, "r") as jsonfile:
+        tle_cache = json.load(jsonfile)
 
 log.basicConfig()
 log.getLogger("apscheduler").setLevel(log.ERROR)

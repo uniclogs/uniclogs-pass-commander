@@ -69,7 +69,11 @@ class Tracker:
                 f"https://celestrak.org/NORAD/elements/gp.php?{self.query}={self.sat_id}"
             ).text.splitlines()
             if tle[0] == "No GP data found":
-                raise ValueError(f"Invalid satellite identifier: {self.sat_id}")
+                if self.tle_cache and self.sat_id in self.tle_cache:
+                    print(f"No results for {self.sat_id} at celestrak, using cached TLE")
+                    tle = self.tle_cache[self.sat_id]
+                else:
+                    raise ValueError(f"Invalid satellite identifier: {self.sat_id}")
         print("\n".join(tle))
         return tle
 
