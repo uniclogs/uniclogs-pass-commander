@@ -118,6 +118,9 @@ local_only = False
 no_tx = False
 no_rot = False
 tx_gain = int(confget(config, ["Main", "txgain"]))
+if len(edl_packet) <= 10:
+    print('Not going to TX because no EDL bytes have been defined')
+    no_tx = True
 
 # XXX These should be set by command line arguments
 # local_only=True # XXX Test mode with no connections
@@ -199,7 +202,9 @@ class Main:
             print(f"Temperature is too high ({degc}°C). Skipping this pass.")
             sleep(1)
             return
-        self.packet = bytes.fromhex(packet)
+        self.packet = b''
+        if not no_tx:
+            self.packet = bytes.fromhex(packet)
         print("Packet to send: ", self.packet)
         self.track.calibrate()
         print("Adjusted for temp/pressure")
@@ -236,14 +241,17 @@ class Main:
             sleep(0.1)
         print("Bird above 10°el")
         while self.track.share["target_el"] >= 10:
-            self.sta.ptt_on()
-            print("Station PTT on")
-            self.edl(self.packet)
-            print("Sent EDL")
-            # FIXME TIMING: wait for edl to finish sending
-            sleep(0.5)
-            self.sta.ptt_off()
-            print("Station PTT off")
+            if no_tx:
+                sleep(0.5)
+            else:
+                self.sta.ptt_on()
+                print("Station PTT on")
+                self.edl(self.packet)
+                print("Sent EDL")
+                # FIXME TIMING: wait for edl to finish sending
+                sleep(0.5)
+                self.sta.ptt_off()
+                print("Station PTT off")
             sleep(3.5)
         self.scheduler.remove_all_jobs()
         print("Removed scheduler jobs")

@@ -33,9 +33,9 @@ class Station:
         self.no_tx = no_tx
 
     def command(self, verb):
-        if self.no_tx and re.search(r"pa-power", verb):
+        if self.no_tx and re.search(r"pa-power|rf-ptt", verb):
             print("Not sending command: ", verb)
-            return
+            return ''
         if re.match(
             r"^(gettemp|((l-band|uhf) (pa-power|rf-ptt)|rotator) (on|off|status))$",
             verb,
