@@ -19,35 +19,33 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 
-"""
-  Todo:
-    - verify doppler
-    - add a mode for decoding arbitrary sats, then test
-"""
+#  Todo:
+#    - verify doppler
+#    - add a mode for decoding arbitrary sats, then test
 
-from time import sleep
-import ephem
-from math import degrees as deg
-from apscheduler.schedulers.background import BackgroundScheduler
-import sys
-import re
-import os
-import pydbus
-import logging as log
 import configparser
 import json
+import logging as log
+import operator
+import os
+import sys
 from dataclasses import dataclass, field
 from functools import reduce
+from math import degrees as deg
 from textwrap import dedent
+from time import sleep
 from typing import Union
-import operator
 
-sys.path.append(os.path.dirname(__file__))
-from Rotator import Rotator
-from Navigator import Navigator
-from Tracker import Tracker
-from Radio import Radio
-from Station import Station
+import ephem
+import pydbus
+from apscheduler.schedulers.background import BackgroundScheduler
+
+from .Navigator import Navigator
+from .Radio import Radio
+from .Rotator import Rotator
+from .Station import Station
+from .Tracker import Tracker
+
 
 @dataclass
 class Config:
@@ -267,7 +265,7 @@ class Main:
             self.track.doppler(self.rad.rxfreq) - self.rad.rxfreq,
         )
 
-    """ Testing stuff goes below here """
+    # Testing stuff goes below here
 
     def dryrun_time(self):
         self.track.obs.date = self.track.obs.date + (30 * ephem.second)
