@@ -26,6 +26,14 @@ class IpValidationError(ConfigError):
         self.value = value
 
 
+class EdlValidationError(ConfigError):
+    def __init__(self, table: str, key: str, value: Any):
+        super().__init__(f"'{table}.{key}'")
+        self.table = table
+        self.key = key
+        self.value = value
+
+
 class KeyValidationError(ConfigError):
     def __init__(self, table: str, key: str, expect: str, actual: str):
         super().__init__(f"'{key}' invalid type {actual}")
@@ -66,7 +74,7 @@ class Config:
 
     # [Main]
     owmid: str = '<open weather map API key>'
-    edl: str = '<EDL command to send, hex formatted with no 0x prefix>'
+    edl: Union[bytes, str] = '<EDL command to send, hex formatted with no 0x prefix>'
     txgain: int = 47
 
     # [Hosts]
@@ -127,11 +135,18 @@ class Config:
             try:
                 return IPv4Address(value)
             except AddressValueError as e:
-                raise IpValidationError('Hosts', key, value) from e
+                raise IpValidationError(table, key, value) from e
+
+        def getedl(cfg: tomlkit.TOMLDocument, table: str, key: str, valtype: type) -> bytes:
+            value = get(cfg, table, key, valtype)
+            try:
+                return bytes.fromhex(value)
+            except (ValueError, TypeError) as e:
+                raise EdlValidationError(table, key, value) from e
 
         # Mandatory keys
         self.owmid = get(config, 'Main', 'owmid', str)
-        self.edl = get(config, 'Main', 'edl', str)
+        self.edl = getedl(config, 'Main', 'edl', str)
         self.txgain = get(config, 'Main', 'txgain', int)
 
         self.radio = getip(config, 'Hosts', 'radio', str)

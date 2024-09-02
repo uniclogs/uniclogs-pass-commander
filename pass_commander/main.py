@@ -95,9 +95,7 @@ class Main:
             print(f"Temperature is too high ({degc}°C). Skipping this pass.")
             sleep(1)
             return
-        packet = b''
-        if not no_tx:
-            packet = bytes.fromhex(edl_packet)
+        packet = edl_packet if not no_tx else b''
         print("Packet to send: ", packet)
         self.track.calibrate()
         print("Adjusted for temp/pressure")
@@ -249,7 +247,7 @@ def start(action, conf):
         print(f"Unknown action: {action}")
 
 
-def cfgerr(args: argparse.Namespace, msg: str, e: Exception):
+def cfgerr(args: argparse.Namespace, msg: str):
     if args.verbose:
         traceback.print_exc()
         print()
@@ -260,8 +258,8 @@ def main(args):
     if args.template:
         try:
             config.Config.template(args.config)
-        except FileExistsError as e:
-            cfgerr(args, 'delete existing file before creating template', e)
+        except FileExistsError:
+            cfgerr(args, 'delete existing file before creating template')
         else:
             print(f"Config template generated at '{args.config}'")
             print(f"Edit '{args.config}' <template text> before running again")
@@ -273,22 +271,23 @@ def main(args):
         cfgerr(
             args,
             f"the file is missing ({type(e.__cause__).__name__}). Initialize using --template",
-            e,
         )
     except config.InvalidTomlError as e:
-        cfgerr(args, f"there is invalid toml: {e}\nPossibly an unquoted string?", e)
+        cfgerr(args, f"there is invalid toml: {e}\nPossibly an unquoted string?")
     except config.MissingKeyError as e:
-        cfgerr(args, f"required key '{e.table}.{e.key}' is missing", e)
+        cfgerr(args, f"required key '{e.table}.{e.key}' is missing")
     except config.TemplateTextError as e:
-        cfgerr(args, f"key '{e}' still has template text. Replace <angle brackets>", e)
+        cfgerr(args, f"key '{e}' still has template text. Replace <angle brackets>")
     except config.UnknownKeyError as e:
-        cfgerr(args, f"remove unknown keys: {' '.join(e.keys)}", e)
+        cfgerr(args, f"remove unknown keys: {' '.join(e.keys)}")
     except config.KeyValidationError as e:
-        cfgerr(args, f"key '{e.table}.{e.key}' has invalid type {e.actual}, expected {e.expect}", e)
+        cfgerr(args, f"key '{e.table}.{e.key}' has invalid type {e.actual}, expected {e.expect}")
     except config.IpValidationError as e:
-        cfgerr(args, f"contents of '{e.table}.{e.key}' is not a valid IP", e)
+        cfgerr(args, f"contents of '{e.table}.{e.key}' is not a valid IP")
     except config.TleValidationError as e:
-        cfgerr(args, f"TLE '{e.name}' is invalid: {e.__cause__}", e)
+        cfgerr(args, f"TLE '{e.name}' is invalid: {e.__cause__}")
+    except config.EdlValidationError as e:
+        cfgerr(args, f"'{e.table}.{e.key}' doesn't look like valid EDL hex: {e.__cause__}")
     else:
         conf.mock = set(args.mock or [])
         if 'all' in conf.mock:

@@ -42,6 +42,7 @@ parser.add_argument('-c', '--config', default="~/.config/OreSat/pass_commander.t
 parser.add_argument('--template', action='store_true',
     help='Generate a config template at the path specified by --config')
 parser.add_argument('-e', '--edl-command',
+    type=bytes.fromhex,
     help=dedent('''\
         Optional EDL command to send periodically during a pass
         Must be hex formatted with no 0x prefix'''))

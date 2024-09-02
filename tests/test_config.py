@@ -55,7 +55,7 @@ class TestConfig(unittest.TestCase):
             f.flush()
             conf = Config(Path(f.name))
         self.assertEqual(conf.owmid, 'fake-id')
-        self.assertEqual(conf.edl, '')
+        self.assertEqual(conf.edl, b'')
         self.assertEqual(conf.txgain, 47)
         self.assertEqual(conf.radio, IPv4Address("127.0.0.2"))
         self.assertEqual(conf.station, IPv4Address("127.0.0.1"))
@@ -155,6 +155,36 @@ class TestConfig(unittest.TestCase):
             with self.assertRaises(config.TleValidationError) as e:
                 Config(Path(f.name))
             self.assertIsInstance(e.exception.__cause__, ValueError)
+
+    def test_edl(self):
+        # Valid full edl command
+        with NamedTemporaryFile(mode='w+') as f:
+            conf = self.good_config()
+            conf['Main']['edl'] = (
+                'c4f53800002f0001000000e50001472ddbcc91f2fc21be1d'
+                '55c941c99e2468ffdb583d0b44eb5cdb4be46dc33c18e233'
+            )
+            tomlkit.dump(conf, f)
+            f.flush()
+            Config(Path(f.name))
+
+        # Non-hex string
+        with NamedTemporaryFile(mode='w+') as f:
+            conf = self.good_config()
+            conf['Main']['edl'] = 'not an edl command'
+            tomlkit.dump(conf, f)
+            f.flush()
+            with self.assertRaises(config.EdlValidationError):
+                Config(Path(f.name))
+
+        # Non-string
+        with NamedTemporaryFile(mode='w+') as f:
+            conf = self.good_config()
+            conf['Main']['edl'] = 123456789
+            tomlkit.dump(conf, f)
+            f.flush()
+            with self.assertRaises(config.KeyValidationError):
+                Config(Path(f.name))
 
     def test_template(self):
         temp = Path(gettempdir()) / "faketemplate.toml"
