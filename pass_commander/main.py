@@ -23,117 +23,23 @@
 #    - verify doppler
 #    - add a mode for decoding arbitrary sats, then test
 
-import configparser
-import json
+import argparse
 import logging as log
-import operator
-import os
-import sys
-from dataclasses import dataclass, field
-from functools import reduce
+import traceback
 from math import degrees as deg
-from textwrap import dedent
 from time import sleep
-from typing import Union
 
 import ephem
 import pydbus
 from apscheduler.schedulers.background import BackgroundScheduler
 
+from . import config
 from .Navigator import Navigator
 from .Radio import Radio
 from .Rotator import Rotator
 from .Station import Station
 from .Tracker import Tracker
 
-
-@dataclass
-class Config:
-    # Main
-    owmid: str
-    edl: str
-    txgain: int
-
-    # Hosts
-    radio: str
-    station: str
-    rotator: str
-
-    # Observer
-    lat: float
-    lon: float
-    alt: int
-    name: str
-
-    az_cal: int = 0
-    el_cal: int = 0
-
-    # Satellite
-    sat_id: str = "OreSat0"
-    tle_cache: dict[Union[list[str], bool]] = field(default_factory=dict)
-
-
-def load_config_file(path):
-    config_file = os.path.expanduser(path)
-    config = configparser.ConfigParser()
-    if not len(config.read(config_file)):
-        print("Config file seems to be missing. Initializing.")
-        if not os.path.exists(os.path.dirname(config_file)):
-            os.makedirs(os.path.dirname(config_file))
-        with open(config_file, "w") as f:
-            f.write(dedent("""\
-                # Be sure to replace all <hint text> including the angle brackets!
-                [Main]
-                owmid = <open weather map API key>
-                edl = <EDL command to send, hex formatted with no 0x prefix>
-                txgain = 47
-
-                [Hosts]
-                radio = 127.0.0.2
-                station = 127.0.0.1
-                rotator = 127.0.0.1
-
-                [Observer]
-                lat = <latitude in decimal notation>
-                lon = <longitude in decimal notation>
-                alt = <altitude in meters>
-                name = <station name or callsign>
-                """))
-        print(f"Please edit {config_file} before running again.")
-        sys.exit(1)
-
-    if '<' in [v[0] for s in config.keys() for v in config[s].values()]:
-        print(f"Please edit {config_file} and replace everything in <angle brackets>")
-        sys.exit(1)
-
-    # This is just shoehorned in here and ugly. Please fix!
-    def confget(conf, tree):
-        try:
-            return reduce(operator.getitem, tree, conf)
-        except KeyError:
-            print(f"Configuration element missing: {tree[0]}")
-            sys.exit(2)
-
-    return Config(
-        owmid = confget(config, ["Main", "owmid"]),
-        edl = confget(config, ["Main", "edl"]),
-        txgain = int(confget(config, ["Main", "txgain"])),
-        radio = confget(config, ["Hosts", "radio"]),
-        station = confget(config, ["Hosts", "station"]),
-        rotator = confget(config, ["Hosts", "rotator"]),
-        lat = float(confget(config, ["Observer", "lat"])),
-        lon = float(confget(config, ["Observer", "lon"])),
-        alt = int(confget(config, ["Observer", "alt"])),
-        name = confget(config, ["Observer", "name"]),
-    )
-
-
-def load_tle_cache(path):
-    tle_cache_file = os.path.expanduser(path)
-    if os.path.isfile(tle_cache_file):
-        with open(tle_cache_file, "r") as jsonfile:
-            return json.load(jsonfile)
-    return { 'end': True }
 
 class Main:
     def __init__(
@@ -302,57 +208,98 @@ class Main:
             sleep(30)
 
 
-def main(args):
-    conf = load_config_file(args.config)
-    conf.tle_cache = load_tle_cache(args.tle_cache)
-
-    mock = set(args.mock or [])
-    if 'all' in mock:
-        mock = {'tx', 'rot', 'con'}
-
-    # Favor command line values over config file values
-    conf.txgain = args.tx_gain or conf.txgain
-    conf.edl = args.edl_command or conf.edl
-    conf.sat_id = args.satellite or conf.sat_id
-
-    if len(conf.edl) <= 10:
-        print('Not going to TX because no EDL bytes have been defined')
-        mock.add('tx')
-
+def start(action, conf):
     log.basicConfig()
     log.getLogger("apscheduler").setLevel(log.ERROR)
 
     tracker = Tracker(
         (conf.lat, conf.lon, conf.alt),
-        sat_id = conf.sat_id,
-        local_only= 'con' in mock,
-        tle_cache = conf.tle_cache,
-        owmid = conf.owmid,
+        sat_id=conf.sat_id,
+        local_only='con' in conf.mock,
+        tle_cache=conf.tle_cache,
+        owmid=conf.owmid,
     )
     rotator = Rotator(
-        conf.rotator,
-        az_cal = conf.az_cal,
-        el_cal = conf.el_cal,
-        local_only ='con' in mock,
-        no_rot = 'rot' in mock,
+        str(conf.rotator),
+        az_cal=conf.az_cal,
+        el_cal=conf.el_cal,
+        local_only='con' in conf.mock,
+        no_rot='rot' in conf.mock,
     )
-    radio = Radio(conf.radio, local_only='con' in mock)
-    station = Station(conf.station, no_tx='tx' in mock)
+    radio = Radio(str(conf.radio), local_only='con' in conf.mock)
+    station = Station(str(conf.station), no_tx='tx' in conf.mock)
     scheduler = BackgroundScheduler()
 
     commander = Main(tracker, rotator, radio, station, scheduler)
-    if args.action == 'run':
+    if action == 'run':
         commander.autorun(
             tx_gain=conf.txgain,
-            count=args.pass_count,
+            count=conf.pass_count,
             packet=conf.edl,
-            no_tx='tx' in mock,
-            local_only='con' in mock)
-    elif args.action == 'dryrun':
+            no_tx='tx' in conf.mock,
+            local_only='con' in conf.mock,
+        )
+    elif action == 'dryrun':
         commander.dryrun()
-    elif args.action == 'doppler':
+    elif action == 'doppler':
         commander.test_doppler()
-    elif args.action == 'nextpass':
+    elif action == 'nextpass':
         commander.track.sleep_until_next_pass()
     else:
-        print(f"Unknown action: {args.action}")
+        print(f"Unknown action: {action}")
+
+
+def cfgerr(args: argparse.Namespace, msg: str, e: Exception):
+    if args.verbose:
+        traceback.print_exc()
+        print()
+    print(f"In '{args.config}'", msg)
+
+
+def main(args):
+    if args.template:
+        try:
+            config.Config.template(args.config)
+        except FileExistsError as e:
+            cfgerr(args, 'delete existing file before creating template', e)
+        else:
+            print(f"Config template generated at '{args.config}'")
+            print(f"Edit '{args.config}' <template text> before running again")
+        return
+
+    try:
+        conf = config.Config(args.config)
+    except config.ConfigNotFoundError as e:
+        cfgerr(
+            args,
+            f"the file is missing ({type(e.__cause__).__name__}). Initialize using --template",
+            e,
+        )
+    except config.InvalidTomlError as e:
+        cfgerr(args, f"there is invalid toml: {e}\nPossibly an unquoted string?", e)
+    except config.MissingKeyError as e:
+        cfgerr(args, f"required key '{e.table}.{e.key}' is missing", e)
+    except config.TemplateTextError as e:
+        cfgerr(args, f"key '{e}' still has template text. Replace <angle brackets>", e)
+    except config.UnknownKeyError as e:
+        cfgerr(args, f"remove unknown keys: {' '.join(e.keys)}", e)
+    except config.KeyValidationError as e:
+        cfgerr(args, f"key '{e.table}.{e.key}' has invalid type {e.actual}, expected {e.expect}", e)
+    except config.IpValidationError as e:
+        cfgerr(args, f"contents of '{e.table}.{e.key}' is not a valid IP", e)
+    except config.TleValidationError as e:
+        cfgerr(args, f"TLE '{e.name}' is invalid: {e.__cause__}", e)
+    else:
+        conf.mock = set(args.mock or [])
+        if 'all' in conf.mock:
+            conf.mock = {'tx', 'rot', 'con'}
+        # Favor command line values over config file values
+        conf.txgain = args.tx_gain or conf.txgain
+        conf.sat_id = args.satellite or conf.sat_id
+        conf.pass_count = args.pass_count
+        conf.edl = args.edl_command or conf.edl
+        if len(conf.edl) <= 10:
+            print('Not going to TX because no EDL bytes have been defined')
+            conf.mock.add('tx')
+
+        start(args.action, conf)

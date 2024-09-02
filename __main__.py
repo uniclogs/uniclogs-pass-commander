@@ -19,7 +19,9 @@
 #
 
 from argparse import ArgumentParser, RawTextHelpFormatter
+from pathlib import Path
 from textwrap import dedent
+
 from pass_commander.main import main
 
 parser = ArgumentParser(formatter_class=RawTextHelpFormatter)
@@ -32,14 +34,13 @@ parser.add_argument('-a', '--action', choices=('run', 'dryrun', 'doppler', 'next
         - nextpass: Sleep until next pass and then quit
         Default: '%(default)s'"""),
     default='run')
-parser.add_argument('-c', '--config', default="~/.config/OreSat/pass_commander.ini",
+parser.add_argument('-c', '--config', default="~/.config/OreSat/pass_commander.toml",
+    type=Path,
     help=dedent("""\
         Path to .ini Config file
         Default: '%(default)s'"""))
-parser.add_argument('--tle-cache', default="~/.config/OreSat/tle_cache.json",
-    help=dedent("""\
-        Path to local JSON TLE cache
-        Default: '%(default)s'"""))
+parser.add_argument('--template', action='store_true',
+    help='Generate a config template at the path specified by --config')
 parser.add_argument('-e', '--edl-command',
     help=dedent('''\
         Optional EDL command to send periodically during a pass
@@ -55,9 +56,12 @@ parser.add_argument('-m', '--mock', action='append', choices=('tx', 'rot', 'con'
 parser.add_argument('-p', '--pass-count', type=int, default=9999,
     help="Maximum number of passes to operate before shutting down. Default: '%(default)s'")
 parser.add_argument('-s', '--satellite',
-    help='can be International Designator, Catalog Number, or Name')
+    help=dedent('''\
+        Can be International Designator, Catalog Number, or Name.
+        If `--mock con` is specified will search local TLE cache and Gpredict cache
+        '''))
 parser.add_argument('-t', '--tx-gain', type=int,
     help='Transmit gain, usually between 0 and 100ish')
 parser.add_argument('-v', '--verbose', action='count',
-    help='Increase verbosity. Not currently implemented')
+    help='Output additional debugging information')
 main(parser.parse_args())
