@@ -19,9 +19,7 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 
-
-import ephem
-from math import cos, degrees as deg
+from math import cos, degrees as deg, pi
 
 
 class Navigator:
@@ -39,9 +37,7 @@ class Navigator:
         self.set_az = set_az
 
         self.maxel_az = self.track.az_at_time(maxel_time)
-        z = (abs(rise_az - self.maxel_az) + abs(self.maxel_az - set_az)) > (
-            1.5 * ephem.pi
-        )
+        z = (abs(rise_az - self.maxel_az) + abs(self.maxel_az - set_az)) > (1.5 * pi)
         if self.no_zero_cross(rise_az, self.maxel_az, set_az):
             self.nav_mode = self.nav_straight
         elif self.no_zero_cross(*self.rot_pi((rise_az, self.maxel_az, set_az))):
@@ -56,8 +52,8 @@ class Navigator:
         )
         if deg(max_elevation) >= 78:
             self.flip_az = (
-                self.rise_az - ((self.rise_az - self.set_az) / 2) + ephem.pi / 2
-            ) % (2 * ephem.pi)
+                self.rise_az - ((self.rise_az - self.set_az) / 2) + pi / 2
+            ) % (2 * pi)
             if self.az_n_hem(self.flip_az):
                 self.flip_az = self.rot_pi(self.flip_az)
             self.nav_mode = self.nav_flip
@@ -72,14 +68,14 @@ class Navigator:
     def rot_pi(self, rad):
         """rotate any radian by half a circle"""
         if type(rad) == tuple:
-            return tuple([(x + ephem.pi) % (2 * ephem.pi) for x in rad])
-        return (rad + ephem.pi) % (2 * ephem.pi)
+            return tuple([(x + pi) % (2 * pi) for x in rad])
+        return (rad + pi) % (2 * pi)
 
     def no_zero_cross(self, a, b, c):
         return (a < b < c) or (a > b > c)
 
     def az_e_hem(self, az):
-        return az < ephem.pi
+        return az < pi
 
     def az_n_hem(self, az):
         return cos(az) > 0
@@ -89,13 +85,11 @@ class Navigator:
 
     def nav_backhand(self, azel):
         (input_az, input_el) = azel
-        return ((input_az + ephem.pi) % (2 * ephem.pi), ephem.pi - input_el)
+        return ((input_az + pi) % (2 * pi), pi - input_el)
 
     def nav_flip(self, azel):
         (input_az, input_el) = azel
-        flip_el = ephem.pi / 2 - (
-            cos(input_az - self.flip_az) * (ephem.pi / 2 - input_el)
-        )
+        flip_el = pi / 2 - (cos(input_az - self.flip_az) * (pi / 2 - input_el))
         return (self.flip_az, flip_el)
 
     def azel(self, azel):
