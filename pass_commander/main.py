@@ -60,8 +60,8 @@ class Config:
     rotator: str
 
     # Observer
-    lat: float
-    lon: float
+    lat: str
+    lon: str
     alt: int
     name: str
 
@@ -121,8 +121,8 @@ def load_config_file(path):
         radio = confget(config, ["Hosts", "radio"]),
         station = confget(config, ["Hosts", "station"]),
         rotator = confget(config, ["Hosts", "rotator"]),
-        lat = float(confget(config, ["Observer", "lat"])),
-        lon = float(confget(config, ["Observer", "lon"])),
+        lat = confget(config, ["Observer", "lat"]),
+        lon = confget(config, ["Observer", "lon"]),
         alt = int(confget(config, ["Observer", "alt"])),
         name = confget(config, ["Observer", "name"]),
     )
