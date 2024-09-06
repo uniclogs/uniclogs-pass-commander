@@ -50,7 +50,7 @@ class TestConfig(unittest.TestCase):
 
         return cfg
 
-    def test_valid(self):
+    def test_valid(self) -> None:
         with NamedTemporaryFile(mode='w+') as f:
             tomlkit.dump(self.good_config(), f)
             f.flush()
@@ -69,25 +69,25 @@ class TestConfig(unittest.TestCase):
 
         # TleCache is optional
         with NamedTemporaryFile(mode='w+') as f:
-            conf = self.good_config()
-            del conf['TleCache']
-            tomlkit.dump(conf, f)
+            cfg = self.good_config()
+            del cfg['TleCache']
+            tomlkit.dump(cfg, f)
             f.flush()
             Config(Path(f.name))
 
-    def test_missing(self):
+    def test_missing(self) -> None:
         with self.assertRaises(config.ConfigNotFoundError):
             Config(Path('missing'))
 
-    def test_invalid(self):
+    def test_invalid(self) -> None:
         with NamedTemporaryFile(mode='w+') as f:
             f.write('this is not the file you are looking for')
             f.flush()
             with self.assertRaises(config.InvalidTomlError):
                 Config(Path(f.name))
 
-    def test_extra_fields(self):
-        cases = [ self.good_config() for _ in range(5) ]
+    def test_extra_fields(self) -> None:
+        cases = [self.good_config() for _ in range(5)]
         cases[0]['Main']['fake'] = "foo"
         cases[1]['Hosts']['fake'] = "foo"
         cases[2]['Observer']['fake'] = "foo"
@@ -101,7 +101,7 @@ class TestConfig(unittest.TestCase):
                 with self.assertRaises(config.UnknownKeyError):
                     Config(Path(f.name))
 
-    def test_invalid_ip(self):
+    def test_invalid_ip(self) -> None:
         with NamedTemporaryFile(mode='w+') as f:
             conf = self.good_config()
             conf['Hosts']['radio'] = 'not an ip'
@@ -110,7 +110,7 @@ class TestConfig(unittest.TestCase):
             with self.assertRaises(config.IpValidationError):
                 Config(Path(f.name))
 
-    def test_integer_lat_lon(self):
+    def test_integer_lat_lon(self) -> None:
         conf = self.good_config()
         conf['Observer']['lat'] = 45
         conf['Observer']['lat'] = -122
@@ -121,8 +121,8 @@ class TestConfig(unittest.TestCase):
             self.assertEqual(out.lat, radians(conf['Observer']['lat']))
             self.assertEqual(out.lon, radians(conf['Observer']['lon']))
 
-    def test_invalid_lat_lon(self):
-        cases = [ self.good_config() for _ in range(4) ]
+    def test_invalid_lat_lon(self) -> None:
+        cases = [self.good_config() for _ in range(4)]
         cases[0]['Observer']['lat'] = 270.4
         cases[1]['Observer']['lat'] = -270.9
         cases[2]['Observer']['lon'] = 270.7
@@ -134,7 +134,7 @@ class TestConfig(unittest.TestCase):
                 with self.assertRaises(config.AngleValidationError):
                     Config(Path(f.name))
 
-    def test_invalid_tle(self):
+    def test_invalid_tle(self) -> None:
         # Missing lines TypeError
         with NamedTemporaryFile(mode='w+') as f:
             conf = self.good_config()
@@ -155,7 +155,7 @@ class TestConfig(unittest.TestCase):
                 Config(Path(f.name))
             self.assertIsInstance(e.exception.__cause__, ValueError)
 
-    def test_edl(self):
+    def test_edl(self) -> None:
         # Valid full edl command
         with NamedTemporaryFile(mode='w+') as f:
             conf = self.good_config()
@@ -185,7 +185,7 @@ class TestConfig(unittest.TestCase):
             with self.assertRaises(config.KeyValidationError):
                 Config(Path(f.name))
 
-    def test_template(self):
+    def test_template(self) -> None:
         temp = Path(gettempdir()) / "faketemplate.toml"
         try:
             Config.template(temp)
@@ -194,7 +194,7 @@ class TestConfig(unittest.TestCase):
         finally:
             temp.unlink(missing_ok=True)
 
-    def test_template_exists(self):
+    def test_template_exists(self) -> None:
         with NamedTemporaryFile(mode='w+') as f:
             with self.assertRaises(FileExistsError):
                 Config.template(Path(f.name))

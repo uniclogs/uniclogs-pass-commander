@@ -206,7 +206,7 @@ class Main:
             sleep(30)
 
 
-def start(action, conf):
+def start(action: str, conf: config.Config) -> None:
     log.basicConfig()
     log.getLogger("apscheduler").setLevel(log.ERROR)
 
@@ -247,14 +247,14 @@ def start(action, conf):
         print(f"Unknown action: {action}")
 
 
-def cfgerr(args: argparse.Namespace, msg: str):
+def cfgerr(args: argparse.Namespace, msg: str) -> None:
     if args.verbose:
         traceback.print_exc()
         print()
     print(f"In '{args.config}'", msg)
 
 
-def main(args):
+def main(args: argparse.Namespace) -> None:
     if args.template:
         try:
             config.Config.template(args.config)

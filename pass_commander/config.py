@@ -3,7 +3,7 @@ from ipaddress import AddressValueError, IPv4Address
 from math import radians
 from numbers import Number
 from pathlib import Path
-from typing import Any, Union
+from typing import Any, Optional
 
 import ephem
 import tomlkit
@@ -64,7 +64,7 @@ class UnknownKeyError(ConfigError):
 
 
 class MissingKeyError(ConfigError):
-    def __init__(self, table, key):
+    def __init__(self, table: str, key: str):
         super().__init__(f'{table}.{key}')
         self.table = table
         self.key = key
@@ -83,8 +83,8 @@ class Config:
     path: InitVar[Path]
 
     # [Main]
-    owmid: str = '<open weather map API key>'
-    edl: Union[bytes, str] = '<EDL command to send, hex formatted with no 0x prefix>'
+    owmid: str = ''
+    edl: bytes = b''
     txgain: int = 47
 
     # [Hosts]
@@ -93,10 +93,10 @@ class Config:
     rotator: IPv4Address = IPv4Address('127.0.0.1')
 
     # [Observer]
-    lat: Union[ephem.Angle, str] = '<latitude in decimal notation>'
-    lon: Union[ephem.Angle, str] = '<longitude in decimal notation>'
-    alt: Union[int, str] = '<altitude in meters>'
-    name: str = '<station name or callsign>'
+    lat: Optional[ephem.Angle] = None
+    lon: Optional[ephem.Angle] = None
+    alt: Optional[int] = None
+    name: str = ''
 
     # ??? Should these be set from cmdline/config?
     az_cal: int = 0
@@ -108,9 +108,9 @@ class Config:
 
     # Command line only
     mock: set[str] = field(default_factory=set)
-    pass_coutn: int = 9999
+    pass_count: int = 9999
 
-    def __post_init__(self, path: Path):
+    def __post_init__(self, path: Path) -> None:
         try:
             config = tomlkit.parse(path.expanduser().read_text())
         except tomlkit.exceptions.ParseError as e:
@@ -164,7 +164,6 @@ class Config:
                 raise AngleValidationError(table, key, value)
             return value
 
-
         # Mandatory keys
         self.owmid = get(config, 'Main', 'owmid', str)
         self.edl = getedl(config, 'Main', 'edl', str)
@@ -196,13 +195,13 @@ class Config:
             raise UnknownKeyError(extra)
 
     @classmethod
-    def template(cls, path: Path):
+    def template(cls, path: Path) -> None:
         config = tomlkit.document()
         config.add(tomlkit.comment("Be sure to replace all <hint text> including angle brackets!"))
 
         main = tomlkit.table()
-        main['owmid'] = cls.owmid
-        main['edl'] = cls.edl
+        main['owmid'] = '<open weather map API key>'
+        main['edl'] = '<EDL command to send, hex formatted with no 0x prefix>'
         main['txgain'] = cls.txgain
 
         hosts = tomlkit.table()
@@ -211,10 +210,10 @@ class Config:
         hosts['rotator'] = str(cls.rotator)
 
         observer = tomlkit.table()
-        observer['lat'] = cls.lat
-        observer['lon'] = cls.lon
-        observer['alt'] = cls.alt
-        observer['name'] = cls.name
+        observer['lat'] = '<latitude in decimal notation>'
+        observer['lon'] = '<longitude in decimal notation>'
+        observer['alt'] = '<altitude in meters>'
+        observer['name'] = '<station name or callsign>'
 
         config['Main'] = main
         config['Hosts'] = hosts
