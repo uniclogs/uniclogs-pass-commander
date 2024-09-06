@@ -119,9 +119,13 @@ class Tracker:
     def get_next_pass(self, min_el=15):
         self.obs.date = ephem.now()
         np = self.obs.next_pass(self.sat)
-        while deg(np[3]) < min_el:
+        fails = 0
+        while deg(np[3]) < min_el and fails < 100:
+            fails += 1
             self.obs.date = np[4]
             np = self.obs.next_pass(self.sat)
+        if fails >= 100:
+            print(f"Something about the TLE or station location is fishy. Unable to find a pass with elevation >{min_el}°")
         return np
 
     def sleep_until_next_pass(self, min_el=15):
