@@ -59,9 +59,9 @@ IP addresses for external components.
 
 #### [Observer]
 Physical properties of the ground station.
-* `lat` (Float) - Station latitude in decimal notation. For best results use 3 - 4
+* `lat` (Float or Integer) - Station latitude in decimal notation. For best results use 3 - 4
   decimal points. See [here](https://xkcd.com/2170/) for more.
-* `lon` (Float) - Station longitude in decimal notation.
+* `lon` (Float or Integer) - Station longitude in decimal notation.
 * `alt` (Integer) - Station altitude in meters.
 * `name` (String) - station name or callsign.
 

@@ -1,5 +1,7 @@
 from dataclasses import InitVar, dataclass, field
 from ipaddress import AddressValueError, IPv4Address
+from math import radians
+from numbers import Number
 from pathlib import Path
 from typing import Any, Union
 
@@ -43,6 +45,14 @@ class KeyValidationError(ConfigError):
         self.actual = actual
 
 
+class AngleValidationError(ConfigError):
+    def __init__(self, table: str, key: str, value: Any):
+        super().__init__(f"'{table}.{key}'")
+        self.table = table
+        self.key = key
+        self.value = value
+
+
 class TemplateTextError(ConfigError):
     pass
 
@@ -83,8 +93,8 @@ class Config:
     rotator: IPv4Address = IPv4Address('127.0.0.1')
 
     # [Observer]
-    lat: str = '<latitude in decimal notation>'
-    lon: str = '<longitude in decimal notation>'
+    lat: Union[ephem.Angle, str] = '<latitude in decimal notation>'
+    lon: Union[ephem.Angle, str] = '<longitude in decimal notation>'
     alt: Union[int, str] = '<altitude in meters>'
     name: str = '<station name or callsign>'
 
@@ -144,6 +154,17 @@ class Config:
             except (ValueError, TypeError) as e:
                 raise EdlValidationError(table, key, value) from e
 
+        def getangle(cfg: tomlkit.TOMLDocument, table: str, key: str, valtype: type) -> ephem.Angle:
+            value = get(cfg, table, key, valtype)
+            try:
+                value = ephem.degrees(radians(value))
+            except (ValueError, TypeError) as e:
+                raise AngleValidationError(table, key, value) from e
+            if not radians(-180) < value < radians(180):
+                raise AngleValidationError(table, key, value)
+            return value
+
+
         # Mandatory keys
         self.owmid = get(config, 'Main', 'owmid', str)
         self.edl = getedl(config, 'Main', 'edl', str)
@@ -153,8 +174,8 @@ class Config:
         self.station = getip(config, 'Hosts', 'station', str)
         self.rotator = getip(config, 'Hosts', 'rotator', str)
 
-        self.lat = get(config, 'Observer', 'lat', str)
-        self.lon = get(config, 'Observer', 'lon', str)
+        self.lat = getangle(config, 'Observer', 'lat', Number)
+        self.lon = getangle(config, 'Observer', 'lon', Number)
         self.alt = get(config, 'Observer', 'alt', int)
         self.name = get(config, 'Observer', 'name', str)
 

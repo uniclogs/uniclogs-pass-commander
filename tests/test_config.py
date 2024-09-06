@@ -1,5 +1,6 @@
 import unittest
 from ipaddress import IPv4Address
+from math import radians
 from pathlib import Path
 from tempfile import NamedTemporaryFile, gettempdir
 
@@ -25,8 +26,8 @@ class TestConfig(unittest.TestCase):
         hosts['rotator'] = "127.0.0.1"
 
         observer = tomlkit.table()
-        observer['lat'] = "45.509054"
-        observer['lon'] = "-122.681394"
+        observer['lat'] = 45.509054
+        observer['lon'] = -122.681394
         observer['alt'] = 500
         observer['name'] = 'not-real'
 
@@ -60,8 +61,8 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(conf.radio, IPv4Address("127.0.0.2"))
         self.assertEqual(conf.station, IPv4Address("127.0.0.1"))
         self.assertEqual(conf.rotator, IPv4Address("127.0.0.1"))
-        self.assertEqual(conf.lat, "45.509054")
-        self.assertEqual(conf.lon, "-122.681394")
+        self.assertEqual(conf.lat, radians(45.509054))
+        self.assertEqual(conf.lon, radians(-122.681394))
         self.assertEqual(conf.alt, 500)
         self.assertEqual(conf.name, 'not-real')
         self.assertEqual(list(conf.tle_cache), ['OreSat0', '2022-026K'])
@@ -86,45 +87,19 @@ class TestConfig(unittest.TestCase):
                 Config(Path(f.name))
 
     def test_extra_fields(self):
-        with NamedTemporaryFile(mode='w+') as f:
-            conf = self.good_config()
-            conf['Main']['fake'] = "foo"
-            tomlkit.dump(conf, f)
-            f.flush()
-            with self.assertRaises(config.UnknownKeyError):
-                Config(Path(f.name))
+        cases = [ self.good_config() for _ in range(5) ]
+        cases[0]['Main']['fake'] = "foo"
+        cases[1]['Hosts']['fake'] = "foo"
+        cases[2]['Observer']['fake'] = "foo"
+        cases[3]['Fake'] = tomlkit.table()
+        cases[4]['Fake'] = 3
 
-        with NamedTemporaryFile(mode='w+') as f:
-            conf = self.good_config()
-            conf['Hosts']['fake'] = "foo"
-            tomlkit.dump(conf, f)
-            f.flush()
-            with self.assertRaises(config.UnknownKeyError):
-                Config(Path(f.name))
-
-        with NamedTemporaryFile(mode='w+') as f:
-            conf = self.good_config()
-            conf['Observer']['fake'] = "foo"
-            tomlkit.dump(conf, f)
-            f.flush()
-            with self.assertRaises(config.UnknownKeyError):
-                Config(Path(f.name))
-
-        with NamedTemporaryFile(mode='w+') as f:
-            conf = self.good_config()
-            conf['Fake'] = tomlkit.table()
-            tomlkit.dump(conf, f)
-            f.flush()
-            with self.assertRaises(config.UnknownKeyError):
-                Config(Path(f.name))
-
-        with NamedTemporaryFile(mode='w+') as f:
-            conf = self.good_config()
-            conf['Fake'] = 3
-            tomlkit.dump(conf, f)
-            f.flush()
-            with self.assertRaises(config.UnknownKeyError):
-                Config(Path(f.name))
+        for conf in cases:
+            with NamedTemporaryFile(mode='w+') as f:
+                tomlkit.dump(conf, f)
+                f.flush()
+                with self.assertRaises(config.UnknownKeyError):
+                    Config(Path(f.name))
 
     def test_invalid_ip(self):
         with NamedTemporaryFile(mode='w+') as f:
@@ -134,6 +109,30 @@ class TestConfig(unittest.TestCase):
             f.flush()
             with self.assertRaises(config.IpValidationError):
                 Config(Path(f.name))
+
+    def test_integer_lat_lon(self):
+        conf = self.good_config()
+        conf['Observer']['lat'] = 45
+        conf['Observer']['lat'] = -122
+        with NamedTemporaryFile(mode='w+') as f:
+            tomlkit.dump(conf, f)
+            f.flush()
+            out = Config(Path(f.name))
+            self.assertEqual(out.lat, radians(conf['Observer']['lat']))
+            self.assertEqual(out.lon, radians(conf['Observer']['lon']))
+
+    def test_invalid_lat_lon(self):
+        cases = [ self.good_config() for _ in range(4) ]
+        cases[0]['Observer']['lat'] = 270.4
+        cases[1]['Observer']['lat'] = -270.9
+        cases[2]['Observer']['lon'] = 270.7
+        cases[3]['Observer']['lon'] = -270.2
+        for conf in cases:
+            with NamedTemporaryFile(mode='w+') as f:
+                tomlkit.dump(conf, f)
+                f.flush()
+                with self.assertRaises(config.AngleValidationError):
+                    Config(Path(f.name))
 
     def test_invalid_tle(self):
         # Missing lines TypeError
