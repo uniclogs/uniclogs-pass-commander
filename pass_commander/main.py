@@ -19,149 +19,136 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 
-"""
-  Todo:
-    - parse paramaters for testing
-      - without hardware
-      - low-gain TX
-    - verify doppler
-    - add a mode for decoding arbitrary sats, then test
-"""
+#  Todo:
+#    - verify doppler
+#    - add a mode for decoding arbitrary sats, then test
 
-from time import sleep
-import ephem
-from math import degrees as deg
-from apscheduler.schedulers.background import BackgroundScheduler
-import sys
-import re
-import os
-import pydbus
-import logging as log
 import configparser
 import json
-from functools import reduce
+import logging as log
 import operator
+import os
+import sys
+from dataclasses import dataclass, field
+from functools import reduce
+from math import degrees as deg
+from textwrap import dedent
+from time import sleep
+from typing import Union
 
-sys.path.append(os.path.dirname(__file__))
-from Rotator import Rotator
-from Navigator import Navigator
-from Tracker import Tracker
-from Radio import Radio
-from Station import Station
+import ephem
+import pydbus
+from apscheduler.schedulers.background import BackgroundScheduler
 
-
-# Config File
-config_file = os.path.expanduser("~/.config/OreSat/pass_commander.ini")
-config = configparser.ConfigParser()
-if not len(config.read(config_file)):
-    print("Config file seems to be missing. Initializing.")
-    if not os.path.exists(os.path.dirname(config_file)):
-        os.makedirs(os.path.dirname(config_file))
-    with open(config_file, "w") as f:
-        f.write(
-            """# Be sure to replace all <hint text> including the angle brackets!
-[Main]
-owmid = <open weather map API key>
-edl = <EDL command to send, hex formatted with no 0x prefix>
-txgain = 47
-
-[Hosts]
-radio = 127.0.0.2
-station = 127.0.0.1
-rotator = 127.0.0.1
-
-[Observer]
-lat = <latitude in decimal notation>
-lon = <longitude in decimal notation>
-alt = <altitude in meters>
-name = <station name or callsign>
-"""
-        )
-    print(f"Please edit {config_file} before running again.")
-    sys.exit(1)
-
-if '<' in [v[0] for s in config.keys() for v in config[s].values()]:
-    print(f"Please edit {config_file} and replace everything in <angle brackets>")
-    sys.exit(1)
-
-# This is just shoehorned in here and ugly. Please fix!
-def confget(conf, tree):
-    try:
-        return reduce(operator.getitem, tree, conf)
-    except KeyError:
-        print(f"Configuration element missing: {tree[0]}")
-        sys.exit(2)
+from .Navigator import Navigator
+from .Radio import Radio
+from .Rotator import Rotator
+from .Station import Station
+from .Tracker import Tracker
 
 
-host_radio = confget(config, ["Hosts", "radio"])
-host_station = confget(config, ["Hosts", "station"])
-host_rotator = confget(config, ["Hosts", "rotator"])
-observer = [
-    confget(config, ["Observer", "lat"]),
-    confget(config, ["Observer", "lon"]),
-    int(confget(config, ["Observer", "alt"])),
-]
+@dataclass
+class Config:
+    # Main
+    owmid: str
+    edl: str
+    txgain: int
 
-# sat_id can be International Designator, Catalog Number, or Name
-sat_id = "OreSat0"
-pass_count = 9999  # Maximum number of passes to operate before shutting down
-if len(sys.argv) > 1:
-    if re.match(r"\d{1,2}$", sys.argv[1]):
-        pass_count = int(sys.argv[1])
-    else:
-        sat_id = sys.argv[1]
+    # Hosts
+    radio: str
+    station: str
+    rotator: str
 
-az_cal, el_cal = 0, 0
-owmid = confget(config, ["Main", "owmid"])
-edl_packet = confget(config, ["Main", "edl"])
-local_only = False
-no_tx = False
-no_rot = False
-tx_gain = int(confget(config, ["Main", "txgain"]))
-if len(edl_packet) <= 10:
-    print('Not going to TX because no EDL bytes have been defined')
-    no_tx = True
+    # Observer
+    lat: str
+    lon: str
+    alt: int
+    name: str
 
-# XXX These should be set by command line arguments
-# local_only=True # XXX Test mode with no connections
-# no_tx=True  # XXX
-# no_rot=True  # XXX
+    az_cal: int = 0
+    el_cal: int = 0
 
-tle_cache = {}
-tle_cache_file = os.path.expanduser("~/.config/OreSat/tle_cache.json")
-if os.path.isfile(tle_cache_file):
-    with open(tle_cache_file, "r") as jsonfile:
-        tle_cache = json.load(jsonfile)
+    # Satellite
+    sat_id: str = "OreSat0"
+    tle_cache: dict[Union[list[str], bool]] = field(default_factory=dict)
 
-log.basicConfig()
-log.getLogger("apscheduler").setLevel(log.ERROR)
 
+def load_config_file(path):
+    config_file = os.path.expanduser(path)
+    config = configparser.ConfigParser()
+    if not len(config.read(config_file)):
+        print("Config file seems to be missing. Initializing.")
+        if not os.path.exists(os.path.dirname(config_file)):
+            os.makedirs(os.path.dirname(config_file))
+        with open(config_file, "w") as f:
+            f.write(dedent("""\
+                # Be sure to replace all <hint text> including the angle brackets!
+                [Main]
+                owmid = <open weather map API key>
+                edl = <EDL command to send, hex formatted with no 0x prefix>
+                txgain = 47
+
+                [Hosts]
+                radio = 127.0.0.2
+                station = 127.0.0.1
+                rotator = 127.0.0.1
+
+                [Observer]
+                lat = <latitude in decimal notation>
+                lon = <longitude in decimal notation>
+                alt = <altitude in meters>
+                name = <station name or callsign>
+                """))
+        print(f"Please edit {config_file} before running again.")
+        sys.exit(1)
+
+    if '<' in [v[0] for s in config.keys() for v in config[s].values()]:
+        print(f"Please edit {config_file} and replace everything in <angle brackets>")
+        sys.exit(1)
+
+    # This is just shoehorned in here and ugly. Please fix!
+    def confget(conf, tree):
+        try:
+            return reduce(operator.getitem, tree, conf)
+        except KeyError:
+            print(f"Configuration element missing: {tree[0]}")
+            sys.exit(2)
+
+    return Config(
+        owmid = confget(config, ["Main", "owmid"]),
+        edl = confget(config, ["Main", "edl"]),
+        txgain = int(confget(config, ["Main", "txgain"])),
+        radio = confget(config, ["Hosts", "radio"]),
+        station = confget(config, ["Hosts", "station"]),
+        rotator = confget(config, ["Hosts", "rotator"]),
+        lat = confget(config, ["Observer", "lat"]),
+        lon = confget(config, ["Observer", "lon"]),
+        alt = int(confget(config, ["Observer", "alt"])),
+        name = confget(config, ["Observer", "name"]),
+    )
+
+
+def load_tle_cache(path):
+    tle_cache_file = os.path.expanduser(path)
+    if os.path.isfile(tle_cache_file):
+        with open(tle_cache_file, "r") as jsonfile:
+            return json.load(jsonfile)
+    return { 'end': True }
 
 class Main:
     def __init__(
         self,
-        o_tracker=Tracker(observer,
-            sat_id=sat_id,
-            local_only=local_only,
-            tle_cache=tle_cache,
-            owmid=owmid,
-        ),
-        o_rotator=Rotator(
-            host_rotator,
-            az_cal=az_cal,
-            el_cal=el_cal,
-            local_only=local_only,
-            no_rot=no_rot,
-        ),
-        o_radio=Radio(host_radio, local_only=local_only),
-        o_station=Station(host_station, no_tx=no_tx),
-        o_scheduler=BackgroundScheduler(),
+        tracker,
+        rotator,
+        radio,
+        station,
+        scheduler,
     ):
-        self.track = o_tracker
-        self.rot = o_rotator
-        self.rad = o_radio
-        self.sta = o_station
-        self.scheduler = o_scheduler
+        self.track = tracker
+        self.rot = rotator
+        self.rad = radio
+        self.sta = station
+        self.scheduler = scheduler
         self.scheduler.start()
         self.nav = None
 
@@ -181,20 +168,20 @@ class Main:
         )
         self.rad.edl(packet)
 
-    def autorun(self, count=9999):
+    def autorun(self, tx_gain, count=9999, packet=None, no_tx=False, local_only=False):
         print(f"Running for {count} passes")
         while count > 0:
             self.require_clock_sync()
             np = self.track.sleep_until_next_pass()
             self.nav = Navigator(self.track, *np)
-            self.work_pass()
+            self.work_pass(tx_gain, packet, no_tx, local_only)
             seconds = (np[4] - ephem.now()) / ephem.second + 1
             if seconds > 0:
                 print(f"Sleeping {seconds:.3f} seconds until pass is really over.")
                 sleep(seconds)
             count -= 1
 
-    def work_pass(self, packet=edl_packet):
+    def work_pass(self, tx_gain, edl_packet, no_tx, local_only):
         if local_only:
             return self.test_bg_rotator()
         degc = self.sta.gettemp()
@@ -202,10 +189,10 @@ class Main:
             print(f"Temperature is too high ({degc}°C). Skipping this pass.")
             sleep(1)
             return
-        self.packet = b''
+        packet = b''
         if not no_tx:
-            self.packet = bytes.fromhex(packet)
-        print("Packet to send: ", self.packet)
+            packet = bytes.fromhex(edl_packet)
+        print("Packet to send: ", packet)
         self.track.calibrate()
         print("Adjusted for temp/pressure")
         self.update_rotator()
@@ -246,7 +233,7 @@ class Main:
             else:
                 self.sta.ptt_on()
                 print("Station PTT on")
-                self.edl(self.packet)
+                self.edl(packet)
                 print("Sent EDL")
                 # FIXME TIMING: wait for edl to finish sending
                 sleep(0.5)
@@ -272,19 +259,18 @@ class Main:
 
     def update_rotator(self):
         azel = self.nav.azel(self.track.freshen().azel())
-        if not local_only:
-            self.rot.go(*tuple(deg(x) for x in azel))
-            self.rad.command(
-                "set_gpredict_rx_frequency",
-                self.track.doppler(self.rad.rxfreq) - self.rad.rxfreq,
-            )
+        self.rot.go(*tuple(deg(x) for x in azel))
+        self.rad.command(
+            "set_gpredict_rx_frequency",
+            self.track.doppler(self.rad.rxfreq) - self.rad.rxfreq,
+        )
 
-    """ Testing stuff goes below here """
+    # Testing stuff goes below here
 
     def dryrun_time(self):
         self.track.obs.date = self.track.obs.date + (30 * ephem.second)
         self.track.sat.compute(self.track.obs)
-        azel = self.nav.azel(self.track.azel())
+        self.nav.azel(self.track.azel())
 
     def dryrun(self):
         np = self.track.get_next_pass(80)
@@ -316,13 +302,57 @@ class Main:
             sleep(30)
 
 
-def main():
-    Main().autorun(pass_count)
-    # Tests could include things like:
-    # Main().dryrun()
-    # Main().test_doppler()
-    # Main().track.sleep_until_next_pass()
+def main(args):
+    conf = load_config_file(args.config)
+    conf.tle_cache = load_tle_cache(args.tle_cache)
 
+    mock = set(args.mock or [])
+    if 'all' in mock:
+        mock = {'tx', 'rot', 'con'}
 
-if __name__ == "__main__":
-    main()
+    # Favor command line values over config file values
+    conf.txgain = args.tx_gain or conf.txgain
+    conf.edl = args.edl_command or conf.edl
+    conf.sat_id = args.satellite or conf.sat_id
+
+    if len(conf.edl) <= 10:
+        print('Not going to TX because no EDL bytes have been defined')
+        mock.add('tx')
+
+    log.basicConfig()
+    log.getLogger("apscheduler").setLevel(log.ERROR)
+
+    tracker = Tracker(
+        (conf.lat, conf.lon, conf.alt),
+        sat_id = conf.sat_id,
+        local_only= 'con' in mock,
+        tle_cache = conf.tle_cache,
+        owmid = conf.owmid,
+    )
+    rotator = Rotator(
+        conf.rotator,
+        az_cal = conf.az_cal,
+        el_cal = conf.el_cal,
+        local_only ='con' in mock,
+        no_rot = 'rot' in mock,
+    )
+    radio = Radio(conf.radio, local_only='con' in mock)
+    station = Station(conf.station, no_tx='tx' in mock)
+    scheduler = BackgroundScheduler()
+
+    commander = Main(tracker, rotator, radio, station, scheduler)
+    if args.action == 'run':
+        commander.autorun(
+            tx_gain=conf.txgain,
+            count=args.pass_count,
+            packet=conf.edl,
+            no_tx='tx' in mock,
+            local_only='con' in mock)
+    elif args.action == 'dryrun':
+        commander.dryrun()
+    elif args.action == 'doppler':
+        commander.test_doppler()
+    elif args.action == 'nextpass':
+        commander.track.sleep_until_next_pass()
+    else:
+        print(f"Unknown action: {args.action}")
