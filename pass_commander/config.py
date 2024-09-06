@@ -83,8 +83,8 @@ class Config:
     rotator: IPv4Address = IPv4Address('127.0.0.1')
 
     # [Observer]
-    lat: Union[float, str] = '<latitude in decimal notation>'
-    lon: Union[float, str] = '<longitude in decimal notation>'
+    lat: str = '<latitude in decimal notation>'
+    lon: str = '<longitude in decimal notation>'
     alt: Union[int, str] = '<altitude in meters>'
     name: str = '<station name or callsign>'
 
@@ -153,8 +153,8 @@ class Config:
         self.station = getip(config, 'Hosts', 'station', str)
         self.rotator = getip(config, 'Hosts', 'rotator', str)
 
-        self.lat = get(config, 'Observer', 'lat', float)
-        self.lon = get(config, 'Observer', 'lon', float)
+        self.lat = get(config, 'Observer', 'lat', str)
+        self.lon = get(config, 'Observer', 'lon', str)
         self.alt = get(config, 'Observer', 'alt', int)
         self.name = get(config, 'Observer', 'name', str)
 

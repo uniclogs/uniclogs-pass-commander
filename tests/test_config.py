@@ -25,8 +25,8 @@ class TestConfig(unittest.TestCase):
         hosts['rotator'] = "127.0.0.1"
 
         observer = tomlkit.table()
-        observer['lat'] = 45.0
-        observer['lon'] = -122.0
+        observer['lat'] = "45.509054"
+        observer['lon'] = "-122.681394"
         observer['alt'] = 500
         observer['name'] = 'not-real'
 
@@ -60,8 +60,8 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(conf.radio, IPv4Address("127.0.0.2"))
         self.assertEqual(conf.station, IPv4Address("127.0.0.1"))
         self.assertEqual(conf.rotator, IPv4Address("127.0.0.1"))
-        self.assertEqual(conf.lat, 45.0)
-        self.assertEqual(conf.lon, -122.0)
+        self.assertEqual(conf.lat, "45.509054")
+        self.assertEqual(conf.lon, "-122.681394")
         self.assertEqual(conf.alt, 500)
         self.assertEqual(conf.name, 'not-real')
         self.assertEqual(list(conf.tle_cache), ['OreSat0', '2022-026K'])
