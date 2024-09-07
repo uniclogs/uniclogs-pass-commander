@@ -162,10 +162,7 @@ class Main:
         print("System clock is synchronized.")
 
     def edl(self, packet):
-        self.rad.command(
-            "set_gpredict_tx_frequency",
-            self.rad.txfreq - self.track.freshen().doppler(self.rad.txfreq),
-        )
+        self.rad.set_tx_frequency(self.track.freshen())
         self.rad.edl(packet)
 
     def autorun(self, tx_gain, count=9999, packet=None, no_tx=False, local_only=False):
@@ -260,10 +257,7 @@ class Main:
     def update_rotator(self):
         azel = self.nav.azel(self.track.freshen().azel())
         self.rot.go(*tuple(deg(x) for x in azel))
-        self.rad.command(
-            "set_gpredict_rx_frequency",
-            self.track.doppler(self.rad.rxfreq) - self.rad.rxfreq,
-        )
+        self.rad.set_rx_frequency(self.track)
 
     # Testing stuff goes below here
 

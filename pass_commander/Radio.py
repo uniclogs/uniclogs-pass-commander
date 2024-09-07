@@ -25,6 +25,7 @@ from threading import Lock
 from xmlrpc.client import ServerProxy
 from time import sleep
 
+from .Tracker import Tracker
 
 class Radio:
     def __init__(self, host, xml_port=10080, edl_port=10025, local_only=False):
@@ -52,5 +53,18 @@ class Radio:
             ret = xo.__getattr__(func)(*args)
         return ret
 
+    def set_rx_frequency(self, track: Tracker) -> None:
+        # RX on the ground frequeny. track.doppler is the satellite relative velocity scaled, so it
+        # starts negative and goes positive, so the frequency starts high and goes low
+        self.command("set_gpredict_rx_frequency", (1 - track.doppler) * self.rxfreq)
+
+    def set_tx_frequency(self, track: Tracker) -> None:
+        # TX is the opposite of RX, starts low, goes high
+        self.command("set_gpredict_tx_frequency", (1 + track.doppler) * self.txfreq)
+
+
     def edl(self, packet):
         self.s.sendto(packet, self.edl_addr)
+
+    def close(self):
+        self.s.close()
