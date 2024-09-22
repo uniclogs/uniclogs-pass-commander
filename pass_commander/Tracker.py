@@ -64,6 +64,8 @@ class Tracker:
                 with open(fname) as file:
                     lines = file.readlines()[3:6]
                     tle = [line.rstrip().split("=")[1] for line in lines]
+        elif self.local_only:
+            print("No matching TLE is available locally")
         else:
             tle = requests.get(
                 f"https://celestrak.org/NORAD/elements/gp.php?{self.query}={self.sat_id}"
