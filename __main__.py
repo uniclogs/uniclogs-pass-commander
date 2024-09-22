@@ -28,7 +28,7 @@ parser.add_argument('-a', '--action', choices=('run', 'dryrun', 'doppler', 'next
         Which action to have Pass Commander take
         - run: Normal operation
         - dryrun: Simulate the next pass immediately
-        - doppler: Simulate doppler shift during a pass
+        - doppler: Show present RX/TX frequencies
         - nextpass: Sleep until next pass and then quit
         Default: '%(default)s'"""),
     default='run')
