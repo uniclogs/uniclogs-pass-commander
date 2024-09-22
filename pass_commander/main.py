@@ -287,7 +287,9 @@ class Main:
 
     def test_doppler(self):
         while True:
-            print(self.track.freshen().doppler())
+            rxfinal = self.rad.rx_frequency(self.track.freshen())
+            txfinal = self.rad.tx_frequency(self.track)
+            print(f"RX = {rxfinal:.3f}  TX = {txfinal:.3f}")
             sleep(0.1)
 
     def test_morse(self):
