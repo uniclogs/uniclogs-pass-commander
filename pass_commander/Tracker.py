@@ -88,7 +88,7 @@ class Tracker:
         if not self.owmid:
             raise ValueError("missing OpenWeatherMap API key")
         r = requests.get(
-            f"https://api.openweathermap.org/data/2.5/onecall?lat={deg(self.obs.lat):.3f}&lon="
+            f"https://api.openweathermap.org/data/3.0/onecall?lat={deg(self.obs.lat):.3f}&lon="
             f"{deg(self.obs.lon):.3f}&exclude=minutely,hourly,daily,alerts&units=metric&appid={self.owmid}"
         )
         c = r.json()["current"]
