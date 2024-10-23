@@ -37,4 +37,4 @@ class Flowgraph:
 
 
 if __name__ == '__main__':
-    Flowgraph()
+    Flowgraph().start()

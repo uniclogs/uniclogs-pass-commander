@@ -40,10 +40,6 @@ parser.add_argument('--tle-cache', default="~/.config/OreSat/tle_cache.json",
     help=dedent("""\
         Path to local JSON TLE cache
         Default: '%(default)s'"""))
-parser.add_argument('-e', '--edl-command',
-    help=dedent('''\
-        Optional EDL command to send periodically during a pass
-        Must be hex formatted with no 0x prefix'''))
 parser.add_argument('-m', '--mock', action='append', choices=('tx', 'rot', 'con', 'all'),
     help=dedent('''\
         Use a simulated (mocked) external dependency, not the real thing

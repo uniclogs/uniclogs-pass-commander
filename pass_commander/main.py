@@ -35,6 +35,7 @@ from math import degrees as deg
 from textwrap import dedent
 from time import sleep
 from typing import Union
+from xmlrpc.client import ServerProxy
 
 import ephem
 import pydbus
@@ -51,7 +52,6 @@ from .Tracker import Tracker
 class Config:
     # Main
     owmid: str
-    edl: str
     txgain: int
 
     # Hosts
@@ -85,7 +85,6 @@ def load_config_file(path):
                 # Be sure to replace all <hint text> including the angle brackets!
                 [Main]
                 owmid = <open weather map API key>
-                edl = <EDL command to send, hex formatted with no 0x prefix>
                 txgain = 47
 
                 [Hosts]
@@ -116,7 +115,6 @@ def load_config_file(path):
 
     return Config(
         owmid = confget(config, ["Main", "owmid"]),
-        edl = confget(config, ["Main", "edl"]),
         txgain = int(confget(config, ["Main", "txgain"])),
         radio = confget(config, ["Hosts", "radio"]),
         station = confget(config, ["Hosts", "station"]),
@@ -186,10 +184,10 @@ class Main:
             print(f"Temperature is too high ({degc}°C). Skipping this pass.")
             sleep(1)
             return
-        packet = b''
+        packet_getter = None
         if not no_tx:
-            packet = bytes.fromhex(edl_packet)
-        print("Packet to send: ", packet)
+            packet_getter = edl_packet
+        print("Acquiring packets from: ", packet_getter)
         self.track.calibrate()
         print("Adjusted for temp/pressure")
         self.update_rotator()
@@ -224,23 +222,19 @@ class Main:
         while self.track.share["target_el"] < 10:
             sleep(0.1)
         print("Bird above 10°el")
-        while self.track.share["target_el"] >= 10:
-            if no_tx:
-                sleep(0.5)
-            else:
-                self.sta.ptt_on()
-                print("Station PTT on")
-                self.edl(packet)
-                print("Sent EDL")
-                # FIXME TIMING: wait for edl to finish sending
-                sleep(0.5)
-                self.sta.ptt_off()
-                print("Station PTT off")
-            sleep(3.5)
-        self.scheduler.remove_all_jobs()
-        print("Removed scheduler jobs")
         self.sta.ptt_on()
         print("Station PTT on")
+        while self.track.share["target_el"] >= 10:
+            if packet_getter is None:
+                sleep(0.5)
+                continue
+            while (p := packet_getter.get_packet()) is not None:
+                self.edl(p.data)
+                print("Sent EDL")
+            # FIXME TIMING: wait for edl to finish sending
+            sleep(0.2)
+        self.scheduler.remove_all_jobs()
+        print("Removed scheduler jobs")
         self.rad.ident()
         print("Sent Morse ident")
         self.sta.ptt_off()
@@ -308,12 +302,12 @@ def main(args):
 
     # Favor command line values over config file values
     conf.txgain = args.tx_gain or conf.txgain
-    conf.edl = args.edl_command or conf.edl
     conf.sat_id = args.satellite or conf.sat_id
 
-    if len(conf.edl) <= 10:
-        print('Not going to TX because no EDL bytes have been defined')
-        mock.add('tx')
+    if 'con' in mock:
+        edl = None
+    else:
+        edl = ServerProxy("http://localhost:10036/")
 
     log.basicConfig()
     log.getLogger("apscheduler").setLevel(log.ERROR)
@@ -341,7 +335,7 @@ def main(args):
         commander.autorun(
             tx_gain=conf.txgain,
             count=args.pass_count,
-            packet=conf.edl,
+            packet=edl,
             no_tx='tx' in mock,
             local_only='con' in mock)
     elif args.action == 'dryrun':
