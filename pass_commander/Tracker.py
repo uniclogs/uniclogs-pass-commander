@@ -27,6 +27,7 @@ from datetime import datetime, timedelta
 from math import degrees as deg
 from multiprocessing import Manager
 from time import sleep
+from typing import Optional
 import ephem
 
 
@@ -88,17 +89,17 @@ class Tracker:
             print("not fetching weather for calibration")
             return
         r = requests.get(
-            f"https://api.openweathermap.org/data/2.5/onecall?lat={deg(self.obs.lat):.3f}&lon="
+            f"https://api.openweathermap.org/data/3.0/onecall?lat={deg(self.obs.lat):.3f}&lon="
             f"{deg(self.obs.lon):.3f}&exclude=minutely,hourly,daily,alerts&units=metric&appid={self.owmid}"
         )
         c = r.json()["current"]
         self.obs.temp = c["temp"]
         self.obs.pressure = c["pressure"]
 
-    def freshen(self):
+    def freshen(self, date: Optional[ephem.Date]=None):
         """perform a new calculation of satellite relative to observer"""
         # ephem.now() does not provide subsecond precision, use ephem.Date() instead:
-        self.obs.date = ephem.Date(datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S.%f"))
+        self.obs.date = date or ephem.Date(datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S.%f"))
         # self.obs.date = ephem.Date(self.obs.date + ephem.second)   # look-ahead
         self.sat.compute(self.obs)
         return self
@@ -108,9 +109,14 @@ class Tracker:
         self.share["target_el"] = deg(self.sat.alt)
         return (self.sat.az, self.sat.alt)
 
-    def doppler(self, freq=436500000):
-        """returns RX doppler shift in hertz for the provided frequency"""
-        return -self.sat.range_velocity / ephem.c * freq
+    @property
+    def doppler(self):
+        """returns the unitless value to scale frequencies for doppler shift
+
+        Note that as the satellite is approaching the observer the value is negative, and as it's
+        moving away the value is positive.
+        """
+        return self.sat.range_velocity / ephem.c
 
     def az_at_time(self, time):
         self.obs.date = time
