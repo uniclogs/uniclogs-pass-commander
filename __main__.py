@@ -37,7 +37,7 @@ parser.add_argument('-a', '--action', choices=('run', 'dryrun', 'doppler', 'next
 parser.add_argument('-c', '--config', default="~/.config/OreSat/pass_commander.toml",
     type=Path,
     help=dedent("""\
-        Path to .ini Config file
+        Path to .toml config file. If dir will assume 'pass_commander.toml' in that dir
         Default: '%(default)s'"""))
 parser.add_argument('--template', action='store_true',
     help='Generate a config template at the path specified by --config')

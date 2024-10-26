@@ -16,14 +16,15 @@ class TestConfig(unittest.TestCase):
         cfg = tomlkit.document()
 
         main = tomlkit.table()
+        main['satellite'] = "fake-sat"
         main['owmid'] = "fake-id"
         main['edl'] = ""
         main['txgain'] = 47
 
         hosts = tomlkit.table()
-        hosts['radio'] = "127.0.0.2"
+        hosts['radio'] = "localhost"
         hosts['station'] = "127.0.0.1"
-        hosts['rotator'] = "127.0.0.1"
+        hosts['rotator'] = "127.0.0.2"
 
         observer = tomlkit.table()
         observer['lat'] = 45.509054
@@ -58,18 +59,21 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(conf.owmid, 'fake-id')
         self.assertEqual(conf.edl, b'')
         self.assertEqual(conf.txgain, 47)
-        self.assertEqual(conf.radio, IPv4Address("127.0.0.2"))
+        self.assertEqual(conf.radio, IPv4Address("127.0.0.1"))
         self.assertEqual(conf.station, IPv4Address("127.0.0.1"))
-        self.assertEqual(conf.rotator, IPv4Address("127.0.0.1"))
+        self.assertEqual(conf.rotator, IPv4Address("127.0.0.2"))
         self.assertEqual(conf.lat, radians(45.509054))
         self.assertEqual(conf.lon, radians(-122.681394))
         self.assertEqual(conf.alt, 500)
         self.assertEqual(conf.name, 'not-real')
         self.assertEqual(list(conf.tle_cache), ['OreSat0', '2022-026K'])
 
-        # TleCache is optional
+        # satellite, owmid, edl, TleCache is optional
         with NamedTemporaryFile(mode='w+') as f:
             cfg = self.good_config()
+            del cfg['Main']['satellite']
+            del cfg['Main']['owmid']
+            del cfg['Main']['edl']
             del cfg['TleCache']
             tomlkit.dump(cfg, f)
             f.flush()

@@ -83,11 +83,10 @@ class Tracker:
         self.sat = ephem.readtle(*self.fetch_tle())
 
     def calibrate(self):
-        if self.local_only:
+        if self.local_only or not self.owmid:
+            # From the ephem docs, temperature defaults to 25 C, pressure defaults to 1010 mBar
             print("not fetching weather for calibration")
             return
-        if not self.owmid:
-            raise ValueError("missing OpenWeatherMap API key")
         r = requests.get(
             f"https://api.openweathermap.org/data/2.5/onecall?lat={deg(self.obs.lat):.3f}&lon="
             f"{deg(self.obs.lon):.3f}&exclude=minutely,hourly,daily,alerts&units=metric&appid={self.owmid}"

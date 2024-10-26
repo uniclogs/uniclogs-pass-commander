@@ -1,12 +1,14 @@
 from dataclasses import InitVar, dataclass, field
 from ipaddress import AddressValueError, IPv4Address
-from math import radians
+from math import radians, degrees
 from numbers import Number
 from pathlib import Path
+from socket import gethostbyname, gaierror
 from typing import Any, Optional
 
 import ephem
 import tomlkit
+from tomlkit.items import Table
 
 
 class ConfigError(Exception):
@@ -54,7 +56,10 @@ class AngleValidationError(ConfigError):
 
 
 class TemplateTextError(ConfigError):
-    pass
+    def __init__(self, table: str, key: str):
+        super().__init__(f'{table}.{key}')
+        self.table = table
+        self.key = key
 
 
 class UnknownKeyError(ConfigError):
@@ -70,6 +75,12 @@ class MissingKeyError(ConfigError):
         self.key = key
 
 
+class MissingTableError(ConfigError):
+    def __init__(self, table: str):
+        super().__init__(table)
+        self.table = table
+
+
 class InvalidTomlError(ConfigError):
     pass
 
@@ -83,27 +94,28 @@ class Config:
     path: InitVar[Path]
 
     # [Main]
+    sat_id: str = ''
     owmid: str = ''
     edl: bytes = b''
-    txgain: int = 47
+    txgain: int = 2
 
     # [Hosts]
-    radio: IPv4Address = IPv4Address('127.0.0.2')
+    radio: IPv4Address = IPv4Address('127.0.0.1')
     station: IPv4Address = IPv4Address('127.0.0.1')
     rotator: IPv4Address = IPv4Address('127.0.0.1')
 
     # [Observer]
-    lat: Optional[ephem.Angle] = None
-    lon: Optional[ephem.Angle] = None
-    alt: Optional[int] = None
+    lat: ephem.Angle = ephem.degrees(radians(45.509054))
+    lon: ephem.Angle = ephem.degrees(radians(-122.681394))
+    alt: int = 50
     name: str = ''
-
-    # ??? Should these be set from cmdline/config?
     az_cal: int = 0
     el_cal: int = 0
+    az_slew: Optional[float] = None
+    el_slew: Optional[float] = None
+    beam_width: Optional[float] = None
 
     # Satellite
-    sat_id: str = "OreSat0"
     tle_cache: dict[str, list[str]] = field(default_factory=dict)
 
     # Command line only
@@ -111,6 +123,17 @@ class Config:
     pass_count: int = 9999
 
     def __post_init__(self, path: Path) -> None:
+
+        # Checks:
+        # - File exists and is valid toml
+        # - All template text removed
+        # - Mandatory tables exist and are Tables
+        # - Optional tables, if they exist, are Tables
+        # - Mandatory keys exist and have values are the expected toml type
+        # - Optional keys, if they exist, have values that are the expected toml type
+        # - Values convert to the expected Config type
+        # - No unexpected keys/all keys consumed
+
         try:
             config = tomlkit.parse(path.expanduser().read_text())
         except tomlkit.exceptions.ParseError as e:
@@ -122,74 +145,90 @@ class Config:
 
         # Ensure all template text has been removed
         for name, table in config.items():
-            if not isinstance(table, tomlkit.items.Table):
+            if not isinstance(table, Table):
                 continue
             for key, value in table.items():
-                if isinstance(value, str) and value and value[0] == '<':
-                    raise TemplateTextError(f'{name}.{key}')
+                if isinstance(value, str) and '<' in value:
+                    raise TemplateTextError(name, key)
 
-        def get(cfg: tomlkit.TOMLDocument, table: str, key: str, valtype: type) -> Any:
+        marker = object()  # marks no default value, in case we want None as default
+        def pop_table(cfg: tomlkit.TOMLDocument, table: str, default: Any = marker) -> Table:
             try:
-                entry = cfg[table]
-                if not isinstance(entry, tomlkit.items.Table):
+                entry = cfg.pop(table)
+                if not isinstance(entry, Table):
                     raise UnknownKeyError([table])
-                val = entry.pop(key)
             except tomlkit.exceptions.NonExistentKey as e:
-                raise MissingKeyError(table, key) from e
+                if default is marker:
+                    raise MissingTableError(table) from e
+                else:
+                    entry = default
+            return entry
+
+        def pop(table: Table, key: str, valtype: type, default: Any = marker) -> Any:
+            try:
+                val = table.pop(key)
+            except tomlkit.exceptions.NonExistentKey as e:
+                if default is marker:
+                    raise MissingKeyError(table, key) from e
+                else:
+                    val = default
             if not isinstance(val, valtype):
                 raise KeyValidationError(table, key, valtype.__name__, type(val).__name__)
             return val
 
-        def getip(cfg: tomlkit.TOMLDocument, table: str, key: str, valtype: type) -> IPv4Address:
-            value = get(cfg, table, key, valtype)
+        def pop_ip(table: Table, key: str, valtype: type, default: Any = marker) -> IPv4Address:
+            value = pop(table, key, valtype, default)
             try:
-                return IPv4Address(value)
-            except AddressValueError as e:
-                raise IpValidationError(table, key, value) from e
+                return IPv4Address(gethostbyname(value))
+            except (AddressValueError, gaierror) as e:
+                raise IpValidationError(table.display_name, key, value) from e
 
-        def getedl(cfg: tomlkit.TOMLDocument, table: str, key: str, valtype: type) -> bytes:
-            value = get(cfg, table, key, valtype)
+        def pop_edl(table: Table, key: str, valtype: type, default: Any = marker) -> bytes:
+            value = pop(table, key, valtype, default)
             try:
                 return bytes.fromhex(value)
             except (ValueError, TypeError) as e:
-                raise EdlValidationError(table, key, value) from e
+                raise EdlValidationError(table.display_name, key, value) from e
 
-        def getangle(cfg: tomlkit.TOMLDocument, table: str, key: str, valtype: type) -> ephem.Angle:
-            value = get(cfg, table, key, valtype)
+        def pop_angle(table: Table, key: str, valtype: type, default: Any = marker) -> ephem.Angle:
+            value = pop(table, key, valtype, default)
             try:
                 value = ephem.degrees(radians(value))
             except (ValueError, TypeError) as e:
-                raise AngleValidationError(table, key, value) from e
+                raise AngleValidationError(table.display_name, key, value) from e
             if not radians(-180) < value < radians(180):
-                raise AngleValidationError(table, key, value)
+                raise AngleValidationError(table.display_name, key, value)
             return value
 
-        # Mandatory keys
-        self.owmid = get(config, 'Main', 'owmid', str)
-        self.edl = getedl(config, 'Main', 'edl', str)
-        self.txgain = get(config, 'Main', 'txgain', int)
+        main = pop_table(config, 'Main')
+        self.sat_id = pop(main, 'satellite', str, self.sat_id)
+        self.owmid = pop(main, 'owmid', str, self.owmid)
+        self.edl = pop_edl(main, 'edl', str, self.edl.decode('ascii'))
+        self.txgain = pop(main, 'txgain', int)
 
-        self.radio = getip(config, 'Hosts', 'radio', str)
-        self.station = getip(config, 'Hosts', 'station', str)
-        self.rotator = getip(config, 'Hosts', 'rotator', str)
+        hosts = pop_table(config, 'Hosts')
+        self.radio = pop_ip(hosts, 'radio', str)
+        self.station = pop_ip(hosts, 'station', str)
+        self.rotator = pop_ip(hosts, 'rotator', str)
 
-        self.lat = getangle(config, 'Observer', 'lat', Number)
-        self.lon = getangle(config, 'Observer', 'lon', Number)
-        self.alt = get(config, 'Observer', 'alt', int)
-        self.name = get(config, 'Observer', 'name', str)
+        observer = pop_table(config, 'Observer')
+        self.lat = pop_angle(observer, 'lat', Number)
+        self.lon = pop_angle(observer, 'lon', Number)
+        self.alt = pop(observer, 'alt', int)
+        self.name = pop(observer, 'name', str)
 
-        # TLE cache is optional
-        self.tle_cache = config.pop('TleCache', {})
+        self.tle_cache = pop_table(config, 'TleCache', {})
+        # validate TLEs
         for key, tle in self.tle_cache.items():
             try:
-                ephem.readtle(*tle)  # validate TLEs
+                ephem.readtle(*tle)
             except (TypeError, ValueError) as e:
                 raise TleValidationError(key, tle) from e
 
         # Ensure there's no extra keys
-        extra = ['Main.' + k for k in config.pop('Main')]
-        extra.extend('Hosts.' + k for k in config.pop('Hosts'))
-        extra.extend('Observer.' + k for k in config.pop('Observer'))
+        extra = ['Main.' + k for k in main]
+        extra.extend('Hosts.' + k for k in hosts)
+        extra.extend('Observer.' + k for k in observer)
         extra.extend(k for k in config)
         if extra:
             raise UnknownKeyError(extra)
@@ -197,11 +236,13 @@ class Config:
     @classmethod
     def template(cls, path: Path) -> None:
         config = tomlkit.document()
-        config.add(tomlkit.comment("Be sure to replace all <hint text> including angle brackets!"))
+        config.add(tomlkit.comment("Be sure to replace all <hint text> including angle brackets"))
+        config.add(tomlkit.comment("Optional fields are commented out, uncomment to set"))
 
         main = tomlkit.table()
-        main['owmid'] = '<open weather map API key>'
-        main['edl'] = '<EDL command to send, hex formatted with no 0x prefix>'
+        main.add(tomlkit.comment('satellite = "<Index to TleCache, Gpredict, or NORAD ID>"'))
+        main.add(tomlkit.comment('owmid = "<OpenWeatherMap API key>"'))
+        main.add(tomlkit.comment('edl = "<EDL command to send, hex formatted with no 0x prefix>"'))
         main['txgain'] = cls.txgain
 
         hosts = tomlkit.table()
@@ -210,14 +251,24 @@ class Config:
         hosts['rotator'] = str(cls.rotator)
 
         observer = tomlkit.table()
-        observer['lat'] = '<latitude in decimal notation>'
-        observer['lon'] = '<longitude in decimal notation>'
-        observer['alt'] = '<altitude in meters>'
+        observer.add(tomlkit.comment("Change lat, lon, and alt to your specific station."))
+        observer.add(tomlkit.comment("These values are for the Portland evb1 station"))
+        observer['lat'] = degrees(cls.lat)
+        observer['lon'] = degrees(cls.lon)
+        observer['alt'] = cls.alt
         observer['name'] = '<station name or callsign>'
 
         config['Main'] = main
         config['Hosts'] = hosts
         config['Observer'] = observer
+
+        config.add(tomlkit.nl())
+        config.add(tomlkit.comment("[TleCache]"))
+        config.add(tomlkit.comment("<name> = ["))
+        config.add(tomlkit.comment('    "<TLE Title>",'))
+        config.add(tomlkit.comment('    "<TLE line 1>",'))
+        config.add(tomlkit.comment('    "<TLE line 2>",'))
+        config.add(tomlkit.comment("]"))
 
         path = path.expanduser()
         if path.exists():

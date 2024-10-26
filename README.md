@@ -43,8 +43,9 @@ It's [TOML](https://toml.io/en/). There are four primary sections, each with
 a set of mandatory configuration keys:
 #### [Main]
 General operation settings.
-* `owmid` (String) - An API key from [OpenWeatherMap API](https://openweathermap.org/api)
-* `edl` (String) - Hex formatted bytes (without 0x) representing an
+* `satellite` (String, optional) - Default satellite ID, either index into TleCache or NORAD ID.
+* `owmid` (String, optional) - An API key from [OpenWeatherMap API](https://openweathermap.org/api)
+* `edl` (String, optional) - Hex formatted bytes (without 0x) representing an
   [EDL command](https://oresat-c3-software.readthedocs.io/en/latest/edl.html).
   Sent periodically during a pass. Consult
   [oresat-c3-software](https://github.com/oresat/oresat-c3-software) for
@@ -53,9 +54,9 @@ General operation settings.
 
 #### [Hosts]
 IP addresses for external components.
-* `radio` (String) - IP address of the flowgraph
-* `station` (String) - IP address of stationd
-* `rotator` (String) - IP address of rotctld
+* `radio` (String) - IP address or hostname of the flowgraph.
+* `station` (String) - IP address or hostname of stationd.
+* `rotator` (String) - IP address or hostname of rotctld.
 
 #### [Observer]
 Physical properties of the ground station.

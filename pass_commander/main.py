@@ -255,6 +255,9 @@ def cfgerr(args: argparse.Namespace, msg: str) -> None:
 
 
 def main(args: argparse.Namespace) -> None:
+    if args.config.is_dir():
+        args.config /= "pass_commander.toml"
+
     if args.template:
         try:
             config.Config.template(args.config)
@@ -295,6 +298,9 @@ def main(args: argparse.Namespace) -> None:
         # Favor command line values over config file values
         conf.txgain = args.tx_gain or conf.txgain
         conf.sat_id = args.satellite or conf.sat_id
+        if not conf.sat_id:
+            print("No satellite specified. Set on command line (see --help) or in config file.")
+            return
         conf.pass_count = args.pass_count
         conf.edl = args.edl_command or conf.edl
         if len(conf.edl) <= 10:
