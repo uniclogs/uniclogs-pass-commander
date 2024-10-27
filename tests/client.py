@@ -1,14 +1,34 @@
 #!/usr/bin/env python3
-'''Tiny testing script to request packets from shim.py'''
+"""Tiny testing script to send ascii hex bytes from stdin to the Pass Commander EDL socket"""
 
+import socket
+from argparse import ArgumentParser
+from contextlib import suppress
 from time import sleep
-from xmlrpc.client import Binary, ServerProxy
 
-proxy = ServerProxy("http://localhost:10036")
-while True:
-    result = proxy.get_packet()
-    if isinstance(result, Binary):
-        print(result.data.hex())
-    else:
-        print(result)
-    sleep(0.5)
+
+def main():
+    parser = ArgumentParser("Send ascii hex from stdin to the EDL socket")
+    parser.add_argument(
+        "-p",
+        "--port",
+        default=10025,
+        type=int,
+        help="port to use for the uplink, default is %(default)s",
+    )
+    args = parser.parse_args()
+
+    packet = bytes.fromhex(input())
+
+    edl = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    edl.connect(("127.0.0.1", args.port))
+
+    while True:
+        print("<--", packet.hex())
+        edl.send(packet)
+        sleep(1)
+
+
+if __name__ == "__main__":
+    with suppress(KeyboardInterrupt):
+        main()

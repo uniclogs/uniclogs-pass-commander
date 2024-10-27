@@ -28,9 +28,11 @@ import json
 import logging as log
 import operator
 import os
+import socket
 import sys
 from dataclasses import dataclass, field
 from functools import reduce
+from ipaddress import IPv4Address
 from math import degrees as deg
 from textwrap import dedent
 from time import sleep
@@ -163,20 +165,20 @@ class Main:
         self.rad.set_tx_frequency(self.track.freshen())
         self.rad.edl(packet)
 
-    def autorun(self, tx_gain, count=9999, packet=None, no_tx=False, local_only=False):
+    def autorun(self, tx_gain, count=9999, edl_port=10025, no_tx=False, local_only=False):
         print(f"Running for {count} passes")
         while count > 0:
             self.require_clock_sync()
             np = self.track.sleep_until_next_pass()
             self.nav = Navigator(self.track, *np)
-            self.work_pass(tx_gain, packet, no_tx, local_only)
+            self.work_pass(tx_gain, edl_port, no_tx, local_only)
             seconds = (np[4] - ephem.now()) / ephem.second + 1
             if seconds > 0:
                 print(f"Sleeping {seconds:.3f} seconds until pass is really over.")
                 sleep(seconds)
             count -= 1
 
-    def work_pass(self, tx_gain, edl_packet, no_tx, local_only):
+    def work_pass(self, tx_gain, edl_port, no_tx, local_only):
         if local_only:
             return self.test_bg_rotator()
         degc = self.sta.gettemp()
@@ -184,10 +186,6 @@ class Main:
             print(f"Temperature is too high ({degc}°C). Skipping this pass.")
             sleep(1)
             return
-        packet_getter = None
-        if not no_tx:
-            packet_getter = edl_packet
-        print("Acquiring packets from: ", packet_getter)
         self.track.calibrate()
         print("Adjusted for temp/pressure")
         self.update_rotator()
@@ -222,19 +220,27 @@ class Main:
         while self.track.share["target_el"] < 10:
             sleep(0.1)
         print("Bird above 10°el")
+        if not no_tx:
+            source = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            source.bind(("", edl_port))
+            source.settimeout(0.5)
+        print("EDL socket open")
         self.sta.ptt_on()
         print("Station PTT on")
         while self.track.share["target_el"] >= 10:
-            if packet_getter is None:
+            if no_tx:
                 sleep(0.5)
                 continue
-            while (p := packet_getter.get_packet()) is not None:
-                self.edl(p.data)
-                print("Sent EDL")
-            # FIXME TIMING: wait for edl to finish sending
-            sleep(0.2)
+            try:
+                packet = source.recv(4096)
+            except socket.timeout:
+                continue
+            self.edl(packet)
+            print("Sent EDL")
         self.scheduler.remove_all_jobs()
         print("Removed scheduler jobs")
+        source.close()
+        print("EDL socket closed")
         self.rad.ident()
         print("Sent Morse ident")
         self.sta.ptt_off()
@@ -304,10 +310,11 @@ def main(args):
     conf.txgain = args.tx_gain or conf.txgain
     conf.sat_id = args.satellite or conf.sat_id
 
-    if 'con' in mock:
-        edl = None
-    else:
-        edl = ServerProxy("http://localhost:10036/")
+    radio_port = 10025
+    if IPv4Address(conf.radio).is_loopback and args.edl_port == radio_port:
+        print(f"EDL port {args.edl_port} conflicts with localhost radio EDL port {radio_port}")
+        print("Please use a different EDL port")
+        return
 
     log.basicConfig()
     log.getLogger("apscheduler").setLevel(log.ERROR)
@@ -335,7 +342,7 @@ def main(args):
         commander.autorun(
             tx_gain=conf.txgain,
             count=args.pass_count,
-            packet=edl,
+            edl_port=args.edl_port,
             no_tx='tx' in mock,
             local_only='con' in mock)
     elif args.action == 'dryrun':
