@@ -13,7 +13,7 @@ class Edl(Thread):
 
     def run(self) -> None:
         edl = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        edl.bind(())
+        edl.bind(self.addr)
         while True:
             print(edl.recv(4096).hex())
 

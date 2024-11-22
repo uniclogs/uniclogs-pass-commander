@@ -11,7 +11,7 @@ from .mock_flowgraph import Flowgraph
 
 class test_radio(unittest.TestCase):
     def test_doppler(self):
-        flowgraph = Flowgraph()
+        flowgraph = Flowgraph("127.0.0.2", 10080)
         rx = []
         tx = []
         flowgraph.server.register_function(lambda x: rx.append(x), "set_gpredict_rx_frequency")

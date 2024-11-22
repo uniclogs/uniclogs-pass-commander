@@ -65,6 +65,8 @@ class Tracker:
                 with open(fname) as file:
                     lines = file.readlines()[3:6]
                     tle = [line.rstrip().split("=")[1] for line in lines]
+        elif self.local_only:
+            print("No matching TLE is available locally")
         else:
             tle = requests.get(
                 f"https://celestrak.org/NORAD/elements/gp.php?{self.query}={self.sat_id}"
@@ -82,11 +84,10 @@ class Tracker:
         self.sat = ephem.readtle(*self.fetch_tle())
 
     def calibrate(self):
-        if self.local_only:
+        if self.local_only or not self.owmid:
+            # From the ephem docs, temperature defaults to 25 C, pressure defaults to 1010 mBar
             print("not fetching weather for calibration")
             return
-        if not self.owmid:
-            raise ValueError("missing OpenWeatherMap API key")
         r = requests.get(
             f"https://api.openweathermap.org/data/3.0/onecall?lat={deg(self.obs.lat):.3f}&lon="
             f"{deg(self.obs.lon):.3f}&exclude=minutely,hourly,daily,alerts&units=metric&appid={self.owmid}"
