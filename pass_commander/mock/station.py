@@ -5,7 +5,7 @@ import socket
 def main():
     cmdr = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     cmdr.bind(("127.0.0.1", 5005))
-    #s.connect(addr)
+    # s.connect(addr)
 
     while True:
         packet, addr = cmdr.recvfrom(4096)
@@ -18,6 +18,7 @@ def main():
             cmdr.sendto("25".encode("ascii"), addr)
         else:
             cmdr.sendto(f"SUCCESS: {action}".encode("ascii"), addr)
+
 
 if __name__ == "__main__":
     main()

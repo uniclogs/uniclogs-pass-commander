@@ -5,6 +5,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile, gettempdir
 
 import tomlkit
+
 from pass_commander import config
 from pass_commander.config import Config
 

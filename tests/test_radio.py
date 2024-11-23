@@ -3,10 +3,10 @@ from itertools import pairwise
 from threading import Thread
 
 import ephem
+
+from pass_commander.mock.flowgraph import Edl, Flowgraph
 from pass_commander.Radio import Radio
 from pass_commander.Tracker import Tracker
-
-from .mock_flowgraph import Edl, Flowgraph
 
 
 class test_radio(unittest.TestCase):
@@ -118,7 +118,7 @@ class test_radio(unittest.TestCase):
         flowgraph = Flowgraph(*addr)
         fgthread = Thread(target=flowgraph.start)
         fgthread.start()
-        edl = Edl("127.0.0.2", 10026).start()
+        Edl("127.0.0.2", 10026).start()
         radio = Radio(*addr, 10026)
 
         packet = "test string".encode('ascii')

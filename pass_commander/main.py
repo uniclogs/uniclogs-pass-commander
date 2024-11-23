@@ -29,6 +29,7 @@ import socket
 import traceback
 from ipaddress import IPv4Address
 from math import degrees as deg
+from threading import Thread
 from time import sleep
 
 import ephem
@@ -36,6 +37,7 @@ import pydbus
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from . import config
+from .mock.flowgraph import Edl, Flowgraph
 from .Navigator import Navigator
 from .Radio import Radio
 from .Rotator import Rotator
@@ -300,5 +302,8 @@ def main(args: argparse.Namespace) -> None:
         conf.pass_count = args.pass_count
         if 'con' in conf.mock:
             conf.radio = IPv4Address("127.0.0.2")
+            Edl(str(conf.radio), 10025).start()
+            flowgraph = Flowgraph(str(conf.radio), 10080)
+            Thread(target=flowgraph.start, daemon=True).start()
 
         start(args.action, conf)
