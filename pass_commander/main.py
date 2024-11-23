@@ -232,7 +232,7 @@ def start(action: str, conf: config.Config) -> None:
         commander.autorun(
             tx_gain=conf.txgain,
             count=conf.pass_count,
-            edl_port=args.edl_port,
+            edl_port=conf.edl_port,
             no_tx='tx' in conf.mock,
             local_only='con' in conf.mock,
         )
@@ -288,8 +288,6 @@ def main(args: argparse.Namespace) -> None:
         cfgerr(args, f"contents of '{e.table}.{e.key}' is not a valid IP")
     except config.TleValidationError as e:
         cfgerr(args, f"TLE '{e.name}' is invalid: {e.__cause__}")
-    except config.EdlValidationError as e:
-        cfgerr(args, f"'{e.table}.{e.key}' doesn't look like valid EDL hex: {e.__cause__}")
     else:
         conf.mock = set(args.mock or [])
         if 'all' in conf.mock:

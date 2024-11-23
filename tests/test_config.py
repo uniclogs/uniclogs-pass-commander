@@ -18,7 +18,7 @@ class TestConfig(unittest.TestCase):
         main = tomlkit.table()
         main['satellite'] = "fake-sat"
         main['owmid'] = "fake-id"
-        main['edl'] = ""
+        main['edl_port'] = 12345
         main['txgain'] = 47
 
         hosts = tomlkit.table()
@@ -57,7 +57,7 @@ class TestConfig(unittest.TestCase):
             f.flush()
             conf = Config(Path(f.name))
         self.assertEqual(conf.owmid, 'fake-id')
-        self.assertEqual(conf.edl, b'')
+        self.assertEqual(conf.edl_port, 12345)
         self.assertEqual(conf.txgain, 47)
         self.assertEqual(conf.radio, IPv4Address("127.0.0.1"))
         self.assertEqual(conf.station, IPv4Address("127.0.0.1"))
@@ -68,12 +68,12 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(conf.name, 'not-real')
         self.assertEqual(list(conf.tle_cache), ['OreSat0', '2022-026K'])
 
-        # satellite, owmid, edl, TleCache is optional
+        # satellite, owmid, edl_port, TleCache is optional
         with NamedTemporaryFile(mode='w+') as f:
             cfg = self.good_config()
             del cfg['Main']['satellite']
             del cfg['Main']['owmid']
-            del cfg['Main']['edl']
+            del cfg['Main']['edl_port']
             del cfg['TleCache']
             tomlkit.dump(cfg, f)
             f.flush()
@@ -160,30 +160,19 @@ class TestConfig(unittest.TestCase):
             self.assertIsInstance(e.exception.__cause__, ValueError)
 
     def test_edl(self) -> None:
-        # Valid full edl command
+        # String
         with NamedTemporaryFile(mode='w+') as f:
             conf = self.good_config()
-            conf['Main']['edl'] = (
-                'c4f53800002f0001000000e50001472ddbcc91f2fc21be1d'
-                '55c941c99e2468ffdb583d0b44eb5cdb4be46dc33c18e233'
-            )
+            conf['Main']['edl_port'] = "12345"
             tomlkit.dump(conf, f)
             f.flush()
-            Config(Path(f.name))
-
-        # Non-hex string
-        with NamedTemporaryFile(mode='w+') as f:
-            conf = self.good_config()
-            conf['Main']['edl'] = 'not an edl command'
-            tomlkit.dump(conf, f)
-            f.flush()
-            with self.assertRaises(config.EdlValidationError):
+            with self.assertRaises(config.KeyValidationError):
                 Config(Path(f.name))
 
-        # Non-string
+        # Float
         with NamedTemporaryFile(mode='w+') as f:
             conf = self.good_config()
-            conf['Main']['edl'] = 123456789
+            conf['Main']['edl_port'] = 1.2345
             tomlkit.dump(conf, f)
             f.flush()
             with self.assertRaises(config.KeyValidationError):

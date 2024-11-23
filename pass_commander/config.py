@@ -30,14 +30,6 @@ class IpValidationError(ConfigError):
         self.value = value
 
 
-class EdlValidationError(ConfigError):
-    def __init__(self, table: str, key: str, value: Any):
-        super().__init__(f"'{table}.{key}'")
-        self.table = table
-        self.key = key
-        self.value = value
-
-
 class KeyValidationError(ConfigError):
     def __init__(self, table: str, key: str, expect: str, actual: str):
         super().__init__(f"'{key}' invalid type {actual}")
@@ -96,7 +88,7 @@ class Config:
     # [Main]
     sat_id: str = ''
     owmid: str = ''
-    edl: bytes = b''
+    edl_port: int = 10025
     txgain: int = 2
 
     # [Hosts]
@@ -183,13 +175,6 @@ class Config:
             except (AddressValueError, gaierror) as e:
                 raise IpValidationError(table.display_name, key, value) from e
 
-        def pop_edl(table: Table, key: str, valtype: type, default: Any = marker) -> bytes:
-            value = pop(table, key, valtype, default)
-            try:
-                return bytes.fromhex(value)
-            except (ValueError, TypeError) as e:
-                raise EdlValidationError(table.display_name, key, value) from e
-
         def pop_angle(table: Table, key: str, valtype: type, default: Any = marker) -> ephem.Angle:
             value = pop(table, key, valtype, default)
             try:
@@ -203,7 +188,7 @@ class Config:
         main = pop_table(config, 'Main')
         self.sat_id = pop(main, 'satellite', str, self.sat_id)
         self.owmid = pop(main, 'owmid', str, self.owmid)
-        self.edl = pop_edl(main, 'edl', str, self.edl.decode('ascii'))
+        self.edl_port = pop(main, 'edl_port', int, self.edl_port)
         self.txgain = pop(main, 'txgain', int)
 
         hosts = pop_table(config, 'Hosts')
@@ -242,7 +227,7 @@ class Config:
         main = tomlkit.table()
         main.add(tomlkit.comment('satellite = "<Index to TleCache, Gpredict, or NORAD ID>"'))
         main.add(tomlkit.comment('owmid = "<OpenWeatherMap API key>"'))
-        main.add(tomlkit.comment('edl = "<EDL command to send, hex formatted with no 0x prefix>"'))
+        main['edl_port'] = cls.edl_port
         main['txgain'] = cls.txgain
 
         hosts = tomlkit.table()
