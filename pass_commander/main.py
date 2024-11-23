@@ -36,8 +36,7 @@ import ephem
 import pydbus
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from . import config
-from .mock.flowgraph import Edl, Flowgraph
+from . import config, mock
 from .Navigator import Navigator
 from .Radio import Radio
 from .Rotator import Rotator
@@ -226,7 +225,7 @@ def start(action: str, conf: config.Config) -> None:
         no_rot='rot' in conf.mock,
     )
     radio = Radio(str(conf.radio))
-    station = Station(str(conf.station), no_tx='tx' in conf.mock)
+    station = Station(str(conf.station))
 
     commander = Main(tracker, rotator, radio, station)
     if action == 'run':
@@ -302,8 +301,12 @@ def main(args: argparse.Namespace) -> None:
         conf.pass_count = args.pass_count
         if 'con' in conf.mock:
             conf.radio = IPv4Address("127.0.0.2")
-            Edl(str(conf.radio), 10025).start()
-            flowgraph = Flowgraph(str(conf.radio), 10080)
+            mock.Edl(str(conf.radio), 10025).start()
+            flowgraph = mock.Flowgraph(str(conf.radio), 10080)
             Thread(target=flowgraph.start, daemon=True).start()
+
+        if 'tx' in conf.mock:
+            conf.station = IPv4Address("127.0.0.2")
+            mock.Stationd(str(conf.station), 5005)
 
         start(args.action, conf)

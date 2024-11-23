@@ -4,7 +4,7 @@ from threading import Thread
 
 import ephem
 
-from pass_commander.mock.flowgraph import Edl, Flowgraph
+from pass_commander.mock import Edl, Flowgraph
 from pass_commander.Radio import Radio
 from pass_commander.Tracker import Tracker
 
