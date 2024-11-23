@@ -27,6 +27,7 @@ import argparse
 import logging as log
 import socket
 import traceback
+from ipaddress import IPv4Address
 from math import degrees as deg
 from time import sleep
 
@@ -45,17 +46,16 @@ from .Tracker import Tracker
 class Main:
     def __init__(
         self,
-        tracker,
-        rotator,
-        radio,
-        station,
-        scheduler,
+        tracker: Tracker,
+        rotator: Rotator,
+        radio: Radio,
+        station: Station,
     ):
         self.track = tracker
         self.rot = rotator
         self.rad = radio
         self.sta = station
-        self.scheduler = scheduler
+        self.scheduler = BackgroundScheduler()
         self.scheduler.start()
         self.nav = None
 
@@ -100,9 +100,9 @@ class Main:
         sleep(2)
         self.scheduler.add_job(self.update_rotator, "interval", seconds=0.5)
         print("Scheduled rotator")
-        self.rad.command("set_tx_selector", "edl")
+        self.rad.set_tx_selector("edl")
         print("Selected EDL TX")
-        self.rad.command("set_tx_gain", tx_gain)
+        self.rad.set_tx_gain(tx_gain)
         print("Set TX gain")
         sleep(2)
         print("Rotator should be moving by now")
@@ -152,7 +152,7 @@ class Main:
         print("Sent Morse ident")
         self.sta.ptt_off()
         print("Station PTT off")
-        self.rad.command("set_tx_gain", 3)
+        self.rad.set_tx_gain(3)
         print("Set TX gain to min")
         self.rot.park()
         print("Parked rotator")
@@ -223,11 +223,10 @@ def start(action: str, conf: config.Config) -> None:
         local_only='con' in conf.mock,
         no_rot='rot' in conf.mock,
     )
-    radio = Radio(str(conf.radio), local_only='con' in conf.mock)
+    radio = Radio(str(conf.radio))
     station = Station(str(conf.station), no_tx='tx' in conf.mock)
-    scheduler = BackgroundScheduler()
 
-    commander = Main(tracker, rotator, radio, station, scheduler)
+    commander = Main(tracker, rotator, radio, station)
     if action == 'run':
         commander.autorun(
             tx_gain=conf.txgain,
@@ -299,5 +298,7 @@ def main(args: argparse.Namespace) -> None:
             print("No satellite specified. Set on command line (see --help) or in config file.")
             return
         conf.pass_count = args.pass_count
+        if 'con' in conf.mock:
+            conf.radio = IPv4Address("127.0.0.2")
 
         start(args.action, conf)

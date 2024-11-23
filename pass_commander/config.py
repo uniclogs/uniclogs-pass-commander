@@ -1,9 +1,9 @@
 from dataclasses import InitVar, dataclass, field
 from ipaddress import AddressValueError, IPv4Address
-from math import radians, degrees
+from math import degrees, radians
 from numbers import Number
 from pathlib import Path
-from socket import gethostbyname, gaierror
+from socket import gaierror, gethostbyname
 from typing import Any, Optional
 
 import ephem
@@ -23,7 +23,7 @@ class TleValidationError(ConfigError):
 
 
 class IpValidationError(ConfigError):
-    def __init__(self, table: str, key: str, value: Any):
+    def __init__(self, table: Optional[str], key: str, value: Any):
         super().__init__(f"'{table}.{key}'")
         self.table = table
         self.key = key
@@ -31,7 +31,7 @@ class IpValidationError(ConfigError):
 
 
 class KeyValidationError(ConfigError):
-    def __init__(self, table: str, key: str, expect: str, actual: str):
+    def __init__(self, table: Optional[str], key: str, expect: str, actual: str):
         super().__init__(f"'{key}' invalid type {actual}")
         self.table = table
         self.key = key
@@ -40,7 +40,7 @@ class KeyValidationError(ConfigError):
 
 
 class AngleValidationError(ConfigError):
-    def __init__(self, table: str, key: str, value: Any):
+    def __init__(self, table: Optional[str], key: str, value: Any):
         super().__init__(f"'{table}.{key}'")
         self.table = table
         self.key = key
@@ -48,7 +48,7 @@ class AngleValidationError(ConfigError):
 
 
 class TemplateTextError(ConfigError):
-    def __init__(self, table: str, key: str):
+    def __init__(self, table: Optional[str], key: str):
         super().__init__(f'{table}.{key}')
         self.table = table
         self.key = key
@@ -61,7 +61,7 @@ class UnknownKeyError(ConfigError):
 
 
 class MissingKeyError(ConfigError):
-    def __init__(self, table: str, key: str):
+    def __init__(self, table: Optional[str], key: str):
         super().__init__(f'{table}.{key}')
         self.table = table
         self.key = key
@@ -144,6 +144,7 @@ class Config:
                     raise TemplateTextError(name, key)
 
         marker = object()  # marks no default value, in case we want None as default
+
         def pop_table(cfg: tomlkit.TOMLDocument, table: str, default: Any = marker) -> Table:
             try:
                 entry = cfg.pop(table)
@@ -161,11 +162,13 @@ class Config:
                 val = table.pop(key)
             except tomlkit.exceptions.NonExistentKey as e:
                 if default is marker:
-                    raise MissingKeyError(table, key) from e
+                    raise MissingKeyError(table.display_name, key) from e
                 else:
                     val = default
             if not isinstance(val, valtype):
-                raise KeyValidationError(table, key, valtype.__name__, type(val).__name__)
+                raise KeyValidationError(
+                    table.display_name, key, valtype.__name__, type(val).__name__
+                )
             return val
 
         def pop_ip(table: Table, key: str, valtype: type, default: Any = marker) -> IPv4Address:
