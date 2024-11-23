@@ -107,9 +107,9 @@ class Main:
         print("Set TX gain")
         sleep(2)
         print("Rotator should be moving by now")
-        while self.rot.share["moving"] == True:
+        while self.rot.is_moving:
             sleep(0.1)
-        if self.rot.share["moving"]:
+        if self.rot.is_moving:
             print("Rotator communication anomaly detected. Skipping this pass.")
             self.scheduler.remove_all_jobs()
             sleep(1)
@@ -164,7 +164,7 @@ class Main:
 
     def update_rotator(self):
         azel = self.nav.azel(self.track.freshen().azel())
-        self.rot.go(*tuple(deg(x) for x in azel))
+        self.rot.go(config.AzEl(deg(x) for x in azel))
         self.rad.set_rx_frequency(self.track)
 
     # Testing stuff goes below here
@@ -191,7 +191,7 @@ class Main:
         self.scheduler.add_job(self.update_rotator, "interval", seconds=0.5)
         while True:
             sleep(1000)
-            # print(self.rot.share['moving'])
+            # print(self.rot.is_moving)
 
     def test_doppler(self):
         while True:
@@ -217,13 +217,7 @@ def start(action: str, conf: config.Config) -> None:
         tle_cache=conf.tle_cache,
         owmid=conf.owmid,
     )
-    rotator = Rotator(
-        str(conf.rotator),
-        az_cal=conf.az_cal,
-        el_cal=conf.el_cal,
-        local_only='con' in conf.mock,
-        no_rot='rot' in conf.mock,
-    )
+    rotator = Rotator(None if 'con' in conf.mock else str(conf.rotator), cal=conf.cal)
     radio = Radio(str(conf.radio))
     station = Station(str(conf.station))
 

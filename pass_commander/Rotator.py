@@ -19,97 +19,96 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 
+from __future__ import annotations
+
+import logging
+from numbers import Real
+from typing import Optional, Union
 
 import Hamlib
-from multiprocessing import Manager
+
+from .config import AzEl
+
+logger = logging.getLogger(__name__)
+
+
+class RotatorError(Exception):
+    def __init__(self, arg: Union[Hamlib.Rot, str]):
+        if isinstance(arg, Hamlib.Rot):
+            arg = Hamlib.rigerror(arg.error_status)
+        super().__init__(arg)
+
+
+class Bound:
+    def __init__(self, lower: Real, upper: Real):
+        self.lower = lower
+        self.upper = upper
+
+    def shift(self, x: Real) -> Bound:
+        self.lower -= x
+        self.upper -= x
+        return self
+
+    def clamp(self, x: Real) -> Real:
+        return min(max(x, self.lower), self.upper)
 
 
 class Rotator:
-    def __init__(
-        self, host, port=4533, az_cal=0, el_cal=0, local_only=False, no_rot=False
-    ):
-        Hamlib.rig_set_debug(Hamlib.RIG_DEBUG_NONE)
-        self.r = Hamlib.Rot(Hamlib.ROT_MODEL_NETROTCTL)
-        self.r.set_conf("rot_pathname", f"{host}:{port}")
-        self.share = Manager().dict()
-        self.share["moving"] = False
-        self.local_only = local_only
-        self.no_rot = no_rot
-        if not local_only:
-            self.r.open()
-            self.r.state.az_offset = az_cal
-            self.r.state.el_offset = el_cal
-            self.amin_az = self.r.state.min_az - az_cal
-            self.amax_az = self.r.state.max_az - az_cal
-            self.amin_el = self.r.state.min_el - el_cal
-            self.amax_el = self.r.state.max_el - el_cal
-            self.last_reported_az = -1
-            self.last_reported_el = -1
-
-    def get_el(self):
-        return self.r.get_position()[1]
-
-    def go(self, az, el):
-        if self.local_only or self.no_rot:
-            print(f"Not going to {az: >7.3f}°az {el: >7.3f}°el")
-            return
-        if az < self.amin_az:
-            az = self.amin_az
-        if az > self.amax_az:
-            az = self.amax_az
-        if el < self.amin_el:
-            el = self.amin_el
-        if el > self.amax_el:
-            el = self.amax_el
-        (
-            now_az,
-            now_el,
-        ) = (
-            self.r.get_position()
-        )  # This consistently returns the last requested az/el, not present location
-        (
-            now_az,
-            now_el,
-        ) = (
-            self.r.get_position()
-        )  # Second request gives us the actual present location - why?
-        if self.r.error_status:
-            print(
-                f"Rotator controller daemon rotctld is returning error {self.r.error_status}"
-            )
-            self.share["moving"] = self.r.error_status
-            self.r.close()
-            self.r.open()
-            if self.r.error_status:
-                print(
-                    f"rotctld is returning error {self.r.error_status} from reconnect attempt"
-                )
-                # FIXME Figure out a thread-safe way to rais an error and abort this pass. Maybe send an alert, too?
-                return
-            else:
-                print(f"Rotator controller reconnected")
-                return self.go(az, el)
-        elif (
-            self.share["moving"] == True
-            and now_az == self.last_reported_az
-            and now_el == self.last_reported_el
-        ):
-            print(f"Rotator movement failed")
-            self.share["moving"] = "Failed"
-            # FIXME Figure out a thread-safe way to rais an error and abort this pass. Maybe send an alert, too?
-        elif abs(az - now_az) > 5 or abs(el - now_el) > 3:
-            # print('Moving! from \t\t\t% 3.3f°az % 3.3f°el to % 3.3f°az % 3.3f°el' % (now_az, now_el, az, el))
-            print(
-                f'{"Moving from": <28}{now_az: >7.3f}°az {now_el: >7.3f}°el to {az: >7.3f}°az {el: >7.3f}°el'
-            )
-            self.share["moving"] = True
-            self.r.set_position(az, el)
-            self.last_requested_az = az
-            self.last_requested_el = el
-            self.last_reported_az = now_az
-            self.last_reported_el = now_el
+    def __init__(self, host: Optional[str], port: int = 4533, cal: AzEl = AzEl(0, 0)):
+        Hamlib.rig_set_debug(Hamlib.RIG_DEBUG_NONE)  # FIXME: hook up to verbose
+        if host is None:
+            self.rot = Hamlib.Rot(Hamlib.ROT_MODEL_DUMMY)
         else:
-            self.share["moving"] = False
+            self.rot = Hamlib.Rot(Hamlib.ROT_MODEL_NETROTCTL)
+            self.rot.set_conf("rot_pathname", f"{host}:{port}")
+        self.rot.do_exception = True  # I recoil, visibly, in horror
+        self._moving = False
 
-    def park(self):
-        self.go(180, 90)
+        try:
+            self.rot.open()
+        except RuntimeError as e:
+            raise RotatorError(self.rot) from e
+        self.rot.state.az_offset = cal.az
+        self.rot.state.el_offset = cal.el
+        self.lim = AzEl(
+            Bound(self.rot.state.min_az, self.rot.state.max_az).shift(cal.az),
+            Bound(self.rot.state.min_el, self.rot.state.max_el).shift(cal.el),
+        )
+        self.last_reported: Optional[AzEl] = None
+
+    @property
+    def is_moving(self) -> bool:
+        return self._moving
+
+    def position(self) -> AzEl:
+        # This consistently returns the last requested az/el, not present location
+        now = AzEl(*self.rot.get_position())
+        # Second request gives us the actual present location - FIXME: why?
+        now = AzEl(*self.rot.get_position())
+        return now
+
+    def go(self, pos: AzEl) -> None:
+        try:
+            now = self.position()
+        except RuntimeError as e:
+            raise RotatorError(self.rot) from e
+
+        if self.is_moving and now == self.last_reported:
+            raise RotatorError("Rotator movement failed")
+
+        az = self.lim.az.clamp(pos.az)
+        el = self.lim.el.clamp(pos.el)
+
+        if abs(az - now.az) > 5 or abs(el - now.el) > 3:
+            logger.info(
+                '%-18s%7.3f°az %7.3f°el to %7.3f°az %7.3f°el', "Moving from", now.az, now.el, az, el
+            )
+            self._moving = True
+            self.rot.set_position(az, el)
+            self.last_reported = now
+        else:
+            self._moving = False
+
+    def park(self) -> None:
+        # TODO rot.park()?
+        self.go(AzEl(180, 90))

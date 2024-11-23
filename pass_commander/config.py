@@ -1,3 +1,4 @@
+from collections import namedtuple
 from dataclasses import InitVar, dataclass, field
 from ipaddress import AddressValueError, IPv4Address
 from math import degrees, radians
@@ -9,6 +10,7 @@ from typing import Any, Optional
 import ephem
 import tomlkit
 from tomlkit.items import Table
+from tomlkit.toml_document import TOMLDocument
 
 
 class ConfigError(Exception):
@@ -81,6 +83,9 @@ class ConfigNotFoundError(ConfigError):
     pass
 
 
+AzEl = namedtuple('AzEl', ['az', 'el'])
+
+
 @dataclass
 class Config:
     path: InitVar[Path]
@@ -101,10 +106,8 @@ class Config:
     lon: ephem.Angle = ephem.degrees(radians(-122.681394))
     alt: int = 50
     name: str = ''
-    az_cal: int = 0
-    el_cal: int = 0
-    az_slew: Optional[float] = None
-    el_slew: Optional[float] = None
+    cal: AzEl = AzEl(0, 0)
+    slew: Optional[AzEl] = None
     beam_width: Optional[float] = None
 
     # Satellite
@@ -145,7 +148,7 @@ class Config:
 
         marker = object()  # marks no default value, in case we want None as default
 
-        def pop_table(cfg: tomlkit.TOMLDocument, table: str, default: Any = marker) -> Table:
+        def pop_table(cfg: TOMLDocument, table: str, default: Any = marker) -> Any:
             try:
                 entry = cfg.pop(table)
                 if not isinstance(entry, Table):

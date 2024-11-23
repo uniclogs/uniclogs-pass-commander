@@ -4,7 +4,7 @@ from pass_commander.mock import Stationd
 from pass_commander.Station import Station
 
 
-class test_station(unittest.TestCase):
+class TestStation(unittest.TestCase):
     def test_pa(self):
         addr = ("127.0.0.2", 5006)
         Stationd(*addr).start()

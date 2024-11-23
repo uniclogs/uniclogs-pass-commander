@@ -9,7 +9,7 @@ from pass_commander.Radio import Radio
 from pass_commander.Tracker import Tracker
 
 
-class test_radio(unittest.TestCase):
+class TestRadio(unittest.TestCase):
     def test_doppler(self) -> None:
         flowgraph = Flowgraph("127.0.0.2", 10080)
         rx = []
