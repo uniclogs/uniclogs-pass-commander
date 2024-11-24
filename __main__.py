@@ -41,11 +41,8 @@ parser.add_argument('-c', '--config', default="~/.config/OreSat/pass_commander.t
         Default: '%(default)s'"""))
 parser.add_argument('--template', action='store_true',
     help='Generate a config template at the path specified by --config')
-parser.add_argument('-e', '--edl-command',
-    type=bytes.fromhex,
-    help=dedent('''\
-        Optional EDL command to send periodically during a pass
-        Must be hex formatted with no 0x prefix'''))
+parser.add_argument('-e', '--edl-port', type=int, default=10025,
+    help="Port to listen for EDL packets on, default: %(default)s")
 parser.add_argument('-m', '--mock', action='append', choices=('tx', 'rot', 'con', 'all'),
     help=dedent('''\
         Use a simulated (mocked) external dependency, not the real thing

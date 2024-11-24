@@ -25,6 +25,7 @@
 
 import argparse
 import logging as log
+import socket
 import traceback
 from math import degrees as deg
 from time import sleep
@@ -71,20 +72,20 @@ class Main:
         self.rad.set_tx_frequency(self.track.freshen())
         self.rad.edl(packet)
 
-    def autorun(self, tx_gain, count=9999, packet=None, no_tx=False, local_only=False):
+    def autorun(self, tx_gain, count=9999, edl_port=10025, no_tx=False, local_only=False):
         print(f"Running for {count} passes")
         while count > 0:
             self.require_clock_sync()
             np = self.track.sleep_until_next_pass()
             self.nav = Navigator(self.track, *np)
-            self.work_pass(tx_gain, packet, no_tx, local_only)
+            self.work_pass(tx_gain, edl_port, no_tx, local_only)
             seconds = (np[4] - ephem.now()) / ephem.second + 1
             if seconds > 0:
                 print(f"Sleeping {seconds:.3f} seconds until pass is really over.")
                 sleep(seconds)
             count -= 1
 
-    def work_pass(self, tx_gain, edl_packet, no_tx, local_only):
+    def work_pass(self, tx_gain, edl_port, no_tx, local_only):
         if local_only:
             return self.test_bg_rotator()
         degc = self.sta.gettemp()
@@ -92,8 +93,6 @@ class Main:
             print(f"Temperature is too high ({degc}°C). Skipping this pass.")
             sleep(1)
             return
-        packet = edl_packet if not no_tx else b''
-        print("Packet to send: ", packet)
         self.track.calibrate()
         print("Adjusted for temp/pressure")
         self.update_rotator()
@@ -128,23 +127,27 @@ class Main:
         while self.track.share["target_el"] < 10:
             sleep(0.1)
         print("Bird above 10°el")
+        if not no_tx:
+            source = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            source.bind(("", edl_port))
+            source.settimeout(0.5)
+        print("EDL socket open")
+        self.sta.ptt_on()
+        print("Station PTT on")
         while self.track.share["target_el"] >= 10:
             if no_tx:
                 sleep(0.5)
-            else:
-                self.sta.ptt_on()
-                print("Station PTT on")
-                self.edl(packet)
-                print("Sent EDL")
-                # FIXME TIMING: wait for edl to finish sending
-                sleep(0.5)
-                self.sta.ptt_off()
-                print("Station PTT off")
-            sleep(3.5)
+                continue
+            try:
+                packet = source.recv(4096)
+            except socket.timeout:
+                continue
+            self.edl(packet)
+            print("Sent EDL")
         self.scheduler.remove_all_jobs()
         print("Removed scheduler jobs")
-        self.sta.ptt_on()
-        print("Station PTT on")
+        source.close()
+        print("EDL socket closed")
         self.rad.ident()
         print("Sent Morse ident")
         self.sta.ptt_off()
@@ -229,7 +232,7 @@ def start(action: str, conf: config.Config) -> None:
         commander.autorun(
             tx_gain=conf.txgain,
             count=conf.pass_count,
-            packet=conf.edl,
+            edl_port=conf.edl_port,
             no_tx='tx' in conf.mock,
             local_only='con' in conf.mock,
         )
@@ -285,8 +288,6 @@ def main(args: argparse.Namespace) -> None:
         cfgerr(args, f"contents of '{e.table}.{e.key}' is not a valid IP")
     except config.TleValidationError as e:
         cfgerr(args, f"TLE '{e.name}' is invalid: {e.__cause__}")
-    except config.EdlValidationError as e:
-        cfgerr(args, f"'{e.table}.{e.key}' doesn't look like valid EDL hex: {e.__cause__}")
     else:
         conf.mock = set(args.mock or [])
         if 'all' in conf.mock:
@@ -298,9 +299,5 @@ def main(args: argparse.Namespace) -> None:
             print("No satellite specified. Set on command line (see --help) or in config file.")
             return
         conf.pass_count = args.pass_count
-        conf.edl = args.edl_command or conf.edl
-        if len(conf.edl) <= 10:
-            print('Not going to TX because no EDL bytes have been defined')
-            conf.mock.add('tx')
 
         start(args.action, conf)

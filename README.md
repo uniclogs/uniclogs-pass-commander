@@ -45,11 +45,11 @@ a set of mandatory configuration keys:
 General operation settings.
 * `satellite` (String, optional) - Default satellite ID, either index into TleCache or NORAD ID.
 * `owmid` (String, optional) - An API key from [OpenWeatherMap API](https://openweathermap.org/api)
-* `edl` (String, optional) - Hex formatted bytes (without 0x) representing an
-  [EDL command](https://oresat-c3-software.readthedocs.io/en/latest/edl.html).
-  Sent periodically during a pass. Consult
+* `edl_port` (int, optional) - Port to listen for
+  [EDL commands](https://oresat-c3-software.readthedocs.io/en/latest/edl.html).
+  Only open during a pass. Consult
   [oresat-c3-software](https://github.com/oresat/oresat-c3-software) for
-  generating bytes.
+  more.
 * `txgain` (Integer) - Gain for transmitting. Usually between 0 and 100.
 
 #### [Hosts]
