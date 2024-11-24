@@ -29,7 +29,7 @@ from .Tracker import Tracker
 
 
 class Radio:
-    def __init__(self, host: str, xml_port: int = 10080, edl_port: int = 10025):
+    def __init__(self, host: str, xml_port: int, edl_port: int):
         self._edl = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._edl.connect((host, edl_port))
         self._lock = Lock()

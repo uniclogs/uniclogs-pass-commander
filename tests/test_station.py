@@ -5,7 +5,7 @@ from pass_commander.Station import Station
 
 
 class TestStation(unittest.TestCase):
-    def test_pa(self):
+    def test_pa(self) -> None:
         addr = ("127.0.0.2", 5006)
         Stationd(*addr).start()
         station = Station(*addr)
@@ -15,7 +15,7 @@ class TestStation(unittest.TestCase):
 
         station.close()
 
-    def test_ptt(self):
+    def test_ptt(self) -> None:
         addr = ("127.0.0.2", 5007)
         Stationd(*addr).start()
         station = Station(*addr)
@@ -25,7 +25,7 @@ class TestStation(unittest.TestCase):
 
         station.close()
 
-    def test_getttemp(self):
+    def test_getttemp(self) -> None:
         addr = ("127.0.0.2", 5008)
         Stationd(*addr).start()
         station = Station(*addr)

@@ -99,6 +99,8 @@ class Config:
 
     # [Hosts]
     radio: IPv4Address = IPv4Address('127.0.0.1')
+    radio_edl: int = 10025
+    radio_xmlrpc: int = 10080
     station: IPv4Address = IPv4Address('127.0.0.1')
     rotator: IPv4Address = IPv4Address('127.0.0.1')
 

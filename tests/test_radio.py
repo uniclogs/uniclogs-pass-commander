@@ -33,7 +33,7 @@ class TestRadio(unittest.TestCase):
         )
         date = ephem.Date(45541.170401489704)  # start of a pass, determined through divination
         track.freshen(date)
-        radio = Radio("127.0.0.2")
+        radio = Radio("127.0.0.2", 10080, 10025)
 
         for t in range(10 * 60):  # passes are about 10 minutes
             track.freshen(ephem.Date(date + t * ephem.second))
@@ -58,7 +58,7 @@ class TestRadio(unittest.TestCase):
         flowgraph = Flowgraph(*addr)
         fgthread = Thread(target=flowgraph.start)
         fgthread.start()
-        radio = Radio(*addr)
+        radio = Radio(*addr, 10025)
 
         radio.ident(delay=0)
 
@@ -71,7 +71,7 @@ class TestRadio(unittest.TestCase):
         flowgraph = Flowgraph(*addr)
         fgthread = Thread(target=flowgraph.start)
         fgthread.start()
-        radio = Radio(*addr)
+        radio = Radio(*addr, 10025)
 
         mode = 'cw'
         radio.set_tx_selector(mode)
@@ -86,7 +86,7 @@ class TestRadio(unittest.TestCase):
         flowgraph = Flowgraph(*addr)
         fgthread = Thread(target=flowgraph.start)
         fgthread.start()
-        radio = Radio(*addr)
+        radio = Radio(*addr, 10025)
 
         gain = 55
         radio.set_tx_gain(gain)
@@ -100,7 +100,7 @@ class TestRadio(unittest.TestCase):
         flowgraph = Flowgraph(*addr)
         fgthread = Thread(target=flowgraph.start)
         fgthread.start()
-        radio = Radio(*addr)
+        radio = Radio(*addr, 10025)
 
         bump = 0
         radio.set_morse_bump(bump)
