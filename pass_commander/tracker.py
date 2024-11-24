@@ -1,24 +1,3 @@
-#!/usr/bin/env python3
-#
-# Copyright (c) 2022-2023 Kenny M.
-#
-# This file is part of UniClOGS Pass Commander
-# (see https://github.com/uniclogs/uniclogs-pass_commander).
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program. If not, see <http://www.gnu.org/licenses/>.
-#
-
 from __future__ import annotations
 
 import logging
@@ -53,7 +32,7 @@ class PassInfo:
 class Tracker:
     def __init__(
         self,
-        observer: tuple[float, float, float],
+        observer: tuple[ephem.Angle, ephem.Angle, int],
         sat_id: str,
         local_only: bool = False,
         tle_cache: Optional[TleCache] = None,

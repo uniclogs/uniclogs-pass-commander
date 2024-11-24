@@ -2,13 +2,13 @@ import unittest
 
 import ephem
 
-from pass_commander.Tracker import Tracker
+from pass_commander.tracker import Tracker
 
 
 class TestTracker(unittest.TestCase):
     def test_next_pass(self) -> None:
         track = Tracker(
-            ("45", "-122", 50),
+            (ephem.degrees(45), ephem.degrees(-122), 50),
             "OreSat0",
             local_only=True,
             tle_cache={
@@ -20,4 +20,4 @@ class TestTracker(unittest.TestCase):
             },
         )
         date = ephem.Date(45541.170401489704)  # start of a pass, determined through divination
-        np = track._next_pass_after(date)
+        track._next_pass_after(date)

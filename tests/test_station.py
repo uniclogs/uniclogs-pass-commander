@@ -1,7 +1,7 @@
 import unittest
 
 from pass_commander.mock import Stationd
-from pass_commander.Station import Station
+from pass_commander.station import Station
 
 
 class TestStation(unittest.TestCase):

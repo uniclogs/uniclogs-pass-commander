@@ -5,8 +5,8 @@ from threading import Thread
 import ephem
 
 from pass_commander.mock import Edl, Flowgraph
-from pass_commander.Radio import Radio
-from pass_commander.Tracker import Tracker
+from pass_commander.radio import Radio
+from pass_commander.tracker import Tracker
 
 
 class TestRadio(unittest.TestCase):
@@ -20,7 +20,7 @@ class TestRadio(unittest.TestCase):
         fgthread.start()
 
         track = Tracker(
-            ("45", "-122", 50),
+            (ephem.degrees(45), ephem.degrees(-122), 50),
             "OreSat0",
             local_only=True,
             tle_cache={

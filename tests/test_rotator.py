@@ -1,7 +1,7 @@
 import unittest
 
 from pass_commander.config import AzEl
-from pass_commander.Rotator import Rotator
+from pass_commander.rotator import Rotator
 
 
 class TestRotator(unittest.TestCase):

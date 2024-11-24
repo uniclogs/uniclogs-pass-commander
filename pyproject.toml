@@ -1,0 +1,27 @@
+[project]
+name = "pass-commander"
+dynamic = ["version"]
+dependencies = [
+    "APScheduler ~= 3.9.1",
+    "pydbus ~= 0.6.0",
+    "pyephem ~= 9.99",
+    "Requests ~= 2.31.0",
+    "ephem ~= 4.1.4",
+    "tomlkit ~= 0.9.2",
+]
+[project.optional-dependencies]
+dev = [
+    "black",
+    "isort",
+    "mypy",
+]
+
+[project.scripts]
+pass-commander = "pass_commander.main:main"
+
+[tool.black]
+line-length = 100
+skip-string-normalization = true
+
+[tool.mypy]
+ignore_missing_imports = true

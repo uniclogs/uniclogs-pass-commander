@@ -2,8 +2,8 @@ import unittest
 from math import radians
 
 from pass_commander.config import AzEl
-from pass_commander.Navigator import Navigator
-from pass_commander.Tracker import PassInfo
+from pass_commander.navigator import Navigator
+from pass_commander.tracker import PassInfo
 
 
 class TestNavigator(unittest.TestCase):
