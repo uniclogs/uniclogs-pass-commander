@@ -78,9 +78,9 @@ class Main:
         while count > 0:
             self.require_clock_sync()
             np = self.track.sleep_until_next_pass()
-            self.nav = Navigator(self.track, *np)
+            self.nav = Navigator(np)
             self.work_pass(tx_gain, edl_port, no_tx, local_only)
-            seconds = (np[4] - ephem.now()) / ephem.second + 1
+            seconds = (np.set_time - ephem.now()) / ephem.second + 1
             if seconds > 0:
                 print(f"Sleeping {seconds:.3f} seconds until pass is really over.")
                 sleep(seconds)
@@ -125,7 +125,7 @@ class Main:
         self.sta.ptt_off()
         print("Station PTT off")
         print("Waiting for bird to reach 10°el")
-        while self.track.share["target_el"] < 10:
+        while deg(self.track.azel().el) < 10:
             sleep(0.1)
         print("Bird above 10°el")
         if not no_tx:
@@ -135,7 +135,7 @@ class Main:
         print("EDL socket open")
         self.sta.ptt_on()
         print("Station PTT on")
-        while self.track.share["target_el"] >= 10:
+        while deg(self.track.azel().el) >= 10:
             if no_tx:
                 sleep(0.5)
                 continue
@@ -176,8 +176,8 @@ class Main:
 
     def dryrun(self):
         np = self.track.get_next_pass(80)
-        self.nav = Navigator(self.track, *np)
-        self.track.obs.date = np[0]
+        self.nav = Navigator(np)
+        self.track.obs.date = np.rise_time
         self.scheduler.add_job(self.dryrun_time, "interval", seconds=0.2)
         sleep(4.5)
         self.scheduler.remove_all_jobs()
@@ -207,7 +207,7 @@ class Main:
 
 
 def start(action: str, conf: config.Config) -> None:
-    log.basicConfig()
+    log.basicConfig(level=log.INFO)
     log.getLogger("apscheduler").setLevel(log.ERROR)
 
     tracker = Tracker(
@@ -294,10 +294,13 @@ def main(args: argparse.Namespace) -> None:
             return
         conf.pass_count = args.pass_count
         if 'con' in conf.mock:
+            # Radio mock
             conf.radio = IPv4Address("127.0.0.2")
             mock.Edl(str(conf.radio), 10025).start()
             flowgraph = mock.Flowgraph(str(conf.radio), 10080)
             Thread(target=flowgraph.start, daemon=True).start()
+            # Tracker mock
+            conf.owmid = ''
 
         if 'tx' in conf.mock:
             conf.station = IPv4Address("127.0.0.2")

@@ -29,5 +29,6 @@ class Stationd(Thread):
     def close(self) -> None:
         self.s.close()
 
+
 if __name__ == "__main__":
     Stationd("127.0.0.2", 5005).start()

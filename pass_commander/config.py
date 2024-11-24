@@ -5,7 +5,7 @@ from math import degrees, radians
 from numbers import Number
 from pathlib import Path
 from socket import gaierror, gethostbyname
-from typing import Any, Optional
+from typing import Any, Optional, TypeAlias
 
 import ephem
 import tomlkit
@@ -84,6 +84,7 @@ class ConfigNotFoundError(ConfigError):
 
 
 AzEl = namedtuple('AzEl', ['az', 'el'])
+TleCache: TypeAlias = dict[str, list[str]]
 
 
 @dataclass
@@ -111,7 +112,7 @@ class Config:
     beam_width: Optional[float] = None
 
     # Satellite
-    tle_cache: dict[str, list[str]] = field(default_factory=dict)
+    tle_cache: TleCache = field(default_factory=dict)
 
     # Command line only
     mock: set[str] = field(default_factory=set)

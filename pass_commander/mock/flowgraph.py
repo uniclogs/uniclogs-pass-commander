@@ -35,11 +35,11 @@ class Flowgraph:
     def stop(self) -> None:
         self.server.shutdown()
 
-    def get_tx_center_frequency(self) -> int:
-        return 1_265_000_000
+    def get_tx_center_frequency(self) -> float:
+        return 1_265_000_000.0
 
-    def get_rx_target_frequency(self) -> int:
-        return 436_500_000
+    def get_rx_target_frequency(self) -> float:
+        return 436_500_000.0
 
     def set_gpredict_tx_frequency(self, value: float) -> None:
         logger.info("TX Freq %f", value)

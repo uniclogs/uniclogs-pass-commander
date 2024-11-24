@@ -34,8 +34,12 @@ class Radio:
         self._edl.connect((host, edl_port))
         self._lock = Lock()
         self._flowgraph = ServerProxy(f"http://{host}:{xml_port}")
-        self.txfreq = self._flowgraph.get_tx_center_frequency()
-        self.rxfreq = self._flowgraph.get_rx_target_frequency()
+        tx = self._flowgraph.get_tx_center_frequency()
+        rx = self._flowgraph.get_rx_target_frequency()
+        assert isinstance(tx, float)
+        assert isinstance(rx, float)
+        self.txfreq = tx
+        self.rxfreq = rx
 
     def ident(self, delay: int = 4) -> None:
         old_selector = self.get_tx_selector()

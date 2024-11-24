@@ -21,6 +21,7 @@ class TestRadio(unittest.TestCase):
 
         track = Tracker(
             ("45", "-122", 50),
+            "OreSat0",
             local_only=True,
             tle_cache={
                 "OreSat0": [

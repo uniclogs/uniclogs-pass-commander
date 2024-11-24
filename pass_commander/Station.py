@@ -26,6 +26,7 @@ from time import sleep
 
 logger = logging.getLogger(__name__)
 
+
 class Station:
     def __init__(self, host: str, station_port: int = 5005, band: str = "l-band"):
         self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
