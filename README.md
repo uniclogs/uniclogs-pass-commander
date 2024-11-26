@@ -24,7 +24,7 @@ commands to the [OreSat0](https://www.oresat.org/satellites/oresat0) and
 ## Installing
 ```sh
 git clone https://github.com/uniclogs/uniclogs-pass_commander.git
-sudo apt install python3-pip python3-hamlib python3-pydbus
+sudo apt install python3-pip python3-hamlib
 pip3 install -e uniclogs-pass_commander[dev]
 ```
 

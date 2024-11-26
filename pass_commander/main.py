@@ -11,7 +11,8 @@ from time import sleep
 from typing import Optional
 
 import ephem
-import pydbus
+from jeepney import DBusAddress, Properties
+from jeepney.io.blocking import open_dbus_connection
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from . import config, mock
@@ -41,7 +42,25 @@ class Main:
         self.nav: Optional[Navigator] = None
 
     def NTPSynchronized(self) -> bool:
-        return bool(pydbus.SystemBus().get(".timedate1").NTPSynchronized)
+        # FIXME:
+        # Paraphrased from man org.freedesktop.timedate1: NTPSynchronized shows
+        # whether the kernel reports the time as synchronized, reported by the
+        # system call adjtimex(3). The purpose of this D-Bus property is to
+        # allow remote clients to access this information. Local clients can
+        # access the information directly.
+        #
+        # I'd prefer to not use D-Bus but I can't find any existing Python
+        # bindings for adjtimex() and the struct argument is sufficiently
+        # complicated that I don't really want to write my own ctypes binding.
+        msg = Properties(
+            DBusAddress(
+                object_path='/org/freedesktop/timedate1',
+                bus_name='org.freedesktop.timedate1',
+                interface='org.freedesktop.timedate1',
+            )
+        ).get("NTPSynchronized")
+        with open_dbus_connection(bus='SYSTEM') as con:
+            return con.send_and_get_reply(msg).body[0][1]
 
     def require_clock_sync(self) -> None:
         while not self.NTPSynchronized():
