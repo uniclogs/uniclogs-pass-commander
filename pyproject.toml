@@ -1,17 +1,26 @@
+[build-system]
+requires = ["setuptools>=75", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "pass-commander"
+requires-python = ">=3.10"
+license = {text = "GPL-3.0"}
 dynamic = ["version"]
+
 dependencies = [
-    "APScheduler ~= 3.9.1",
+    "APScheduler >= 3.9.1",
     "jeepney >= 0.8.0",
-    "pyephem ~= 9.99",
-    "Requests ~= 2.31.0",
-    "ephem ~= 4.1.4",
-    "tomlkit ~= 0.9.2",
+    "pyephem >= 9.99",
+    "Requests >= 2.32.0",
+    "ephem >= 4.1.4",
+    "tomlkit >= 0.13.2",
 ]
+
 [project.optional-dependencies]
 dev = [
     "black",
+    "build >= 1.2.2",
     "isort",
     "mypy",
 ]
@@ -25,3 +34,10 @@ skip-string-normalization = true
 
 [tool.mypy]
 ignore_missing_imports = true
+
+[tool.setuptools_scm]
+# This page intentionally left blank
+
+# When PEP-725 gets accepted
+# [external]
+# dependencies = [ "pkg:generic/python3-hamlib" ]

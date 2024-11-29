@@ -39,6 +39,10 @@ When your config is all set up, run with `pass-commander`. See the
 Testing without rotctld, stationd and a running radio flowgraph is partially
 supported. See the `--mock` flag, especially `-m all`.
 
+## Building
+To produce a python package `python -m build`. The result, a wheel, will be in `dist/`.
+
+
 ## Config file
 It's [TOML](https://toml.io/en/). There are four primary sections, each with
 a set of mandatory configuration keys:
