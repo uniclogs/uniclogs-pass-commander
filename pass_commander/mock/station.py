@@ -8,7 +8,17 @@ logger = logging.getLogger(__name__)
 
 
 class Stationd(Thread):
-    def __init__(self, host: str, port: int):
+    def __init__(self, host: str, port: int) -> None:
+        '''Thread that locally simulates stationd for testing.
+
+        Parameters
+        ----------
+        host
+            IP to listen with, usually localhost or some loopback
+        port
+            Port to listen on
+
+        '''
         super().__init__(name=self.__class__.__name__, daemon=True)
         self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.s.bind((host, port))

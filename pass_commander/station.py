@@ -1,24 +1,3 @@
-#!/usr/bin/env python3
-#
-# Copyright (c) 2022-2023 Kenny M.
-#
-# This file is part of UniClOGS Pass Commander
-# (see https://github.com/uniclogs/uniclogs-pass_commander).
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program. If not, see <http://www.gnu.org/licenses/>.
-#
-
 import logging
 import re
 import socket
@@ -28,7 +7,22 @@ logger = logging.getLogger(__name__)
 
 
 class Station:
-    def __init__(self, host: str, station_port: int = 5005, band: str = "l-band"):
+    def __init__(self, host: str, station_port: int = 5005, band: str = "l-band") -> None:
+        '''Python binding for uniclogs-stationd.
+
+        Yes stationd is written in python but it only exposes a socket interface. Except also
+        for reasons this is incomplete and you'll need one instance per band.
+
+        Parameters
+        ----------
+        host
+            IP address of the stationd instance.
+        station_port
+            Port that the stationd instance is listening on.
+        band
+            One of `l-band` or `uhf`. We need separate instances to control the radios for each
+            band.
+        '''
         self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.s.connect((host, station_port))
         self.band = band
@@ -41,9 +35,8 @@ class Station:
             logger.info("Sending command: %s", verb)
             self.s.send(verb.encode())
             return self._response()
-        else:
-            logger.warning("invalid command: %s", verb)
-            return ''
+        logger.warning("invalid command: %s", verb)
+        return ''
 
     def _response(self) -> str:
         data = self.s.recv(4096)
@@ -61,7 +54,7 @@ class Station:
             self.pa_off()
             sleep(120)
             return self.pa_off()
-        elif m := re.search(r"Please wait (\S+) seconds", ret):
+        if m := re.search(r"Please wait (\S+) seconds", ret):
             sleep(int(m.group(1)))
             return self.pa_off()
         return ret
