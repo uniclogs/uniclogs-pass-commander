@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from math import degrees as deg
+from pathlib import Path
 from time import sleep
-from typing import Optional
 
 import ephem
 import requests
@@ -19,7 +18,12 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class PassInfo:
-    "https://rhodesmill.org/pyephem/quick.html#transit-rising-and-setting"
+    '''See https://rhodesmill.org/pyephem/quick.html#transit-rising-and-setting next_pass().
+
+    This turns the returned tuple into something with names, and adds the maximum_altitude_azimuth
+    field to record the asimuth at maximum_altitude.
+    '''
+
     rise_time: ephem.Date
     rise_azimuth: ephem.Angle
     maximum_altitude_time: ephem.Date
@@ -34,17 +38,38 @@ class Tracker:
         self,
         observer: tuple[ephem.Angle, ephem.Angle, int],
         sat_id: str,
+        *,
         local_only: bool = False,
-        tle_cache: Optional[TleCache] = None,
+        tle_cache: TleCache | None = None,
         owmid: str = '',
-    ):
+    ) -> None:
+        '''Tracks a satellite relative to a given observer.
+
+        Given (or told to fetch) a TLE, it can handle temperature and pressure calibration,
+        determining when the next pass will be, current satellite location, and doppler scaling.
+
+        Parameters
+        ----------
+        observer
+            The (latitude, longitude, altitude) of the observer.
+        sat_id
+            The ID of the satellite, either as an International Designator, a NORAD Satellite
+            Catalog number, or Catalog satellite name.
+        local_only
+            If true, do not attempt to the internet for TLE lookup, only tle_cache or Gpredict.
+        tle_cache
+            A local cache of TLEs for lookup.
+        owmid
+            Open Weather Map API key, or empty string for none.
+        '''
         self.sat_id = sat_id
         self.local_only = local_only
         self.tle_cache = tle_cache
         self.owmid = owmid
         m = re.match(r"(?:20)?(\d\d)-?(\d{3}[A-Z])$", self.sat_id.upper())
         if m:
-            self.sat_id = "20%s-%s" % m.groups()
+            year, launch = m.groups()
+            self.sat_id = f"20{year}-{launch}"
             self.query = "INTDES"
         elif re.match(r"\d{5}$", self.sat_id):
             self.query = "CATNR"
@@ -59,17 +84,18 @@ class Tracker:
             logger.info("using cached TLE")
             tle = self.tle_cache[self.sat_id]
         elif self.local_only and self.query == "CATNR":
-            fname = f'{os.environ["HOME"]}/.config/Gpredict/satdata/{self.sat_id}.sat'
-            if os.path.isfile(fname):
+            fname = Path.home() / '.config/Gpredict/satdata{self.sat_id}.sat'
+            if fname.is_file():
                 logger.info("using Gpredict's cached TLE")
-                with open(fname, encoding="ascii") as file:
+                with fname.open(encoding="ascii") as file:
                     lines = file.readlines()[3:6]
                     tle = [line.rstrip().split("=")[1] for line in lines]
         elif self.local_only:
             logger.info("No matching TLE is available locally")
         else:
             tle = requests.get(
-                f"https://celestrak.org/NORAD/elements/gp.php?{self.query}={self.sat_id}"
+                f"https://celestrak.org/NORAD/elements/gp.php?{self.query}={self.sat_id}",
+                timeout=10,
             ).text.splitlines()
             if tle[0] == "No GP data found":
                 if self.tle_cache and self.sat_id in self.tle_cache:
@@ -88,27 +114,30 @@ class Tracker:
         r = requests.get(
             f"https://api.openweathermap.org/data/3.0/onecall?lat={deg(self.obs.lat):.3f}&lon="
             f"{deg(self.obs.lon):.3f}&exclude=minutely,hourly,daily,alerts&units=metric&appid="
-            f"{self.owmid}"
+            f"{self.owmid}",
+            timeout=10,
         )
         c = r.json()["current"]
         self.obs.temp = c["temp"]
         self.obs.pressure = c["pressure"]
 
-    def freshen(self, date: Optional[ephem.Date] = None) -> Tracker:
-        """perform a new calculation of satellite relative to observer"""
-        # ephem.now() does not provide subsecond precision, use ephem.Date() instead:
-        self.obs.date = date or ephem.Date(datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S.%f"))
-        # self.obs.date = ephem.Date(self.obs.date + ephem.second)   # look-ahead
+    def now(self) -> ephem.Date:
+        '''ephem.now() does not provide subsecond precision, use this instead.'''
+        return ephem.Date(datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f"))
+
+    def freshen(self, date: ephem.Date | None = None) -> Tracker:
+        """Perform a new calculation of satellite relative to observer."""
+        self.obs.date = date or self.now()
         self.sat.compute(self.obs)
         return self
 
     def azel(self) -> AzEl:
-        """returns current azimuth and elevation in radians"""
+        """Return the current track azimuth and elevation in radians."""
         return AzEl(self.sat.az, self.sat.alt)
 
     @property
     def doppler(self) -> float:
-        """returns the unitless value to scale frequencies for doppler shift
+        """Returns the unitless value to scale frequencies for doppler shift.
 
         Note that as the satellite is approaching the observer the value is negative, and as it's
         moving away the value is positive.
@@ -116,7 +145,7 @@ class Tracker:
         # both values should be float but ephem lacks type annotations.
         return float(self.sat.range_velocity / ephem.c)
 
-    def next_pass_after(self, date: ephem.Date, singlepass: bool = True) -> PassInfo:
+    def next_pass_after(self, date: ephem.Date, *, singlepass: bool = True) -> PassInfo:
         self.obs.date = date
         info = self.obs.next_pass(self.sat, singlepass)
 
@@ -125,13 +154,13 @@ class Tracker:
 
         return PassInfo(info[0], info[1], info[2], info[3], info[4], info[5], self.sat.az)
 
-    def get_next_pass(self, min_el: float = 15.0) -> PassInfo:
+    def get_next_pass(self, min_el: float = 15.0, max_lookahead: int = 100) -> PassInfo:
         np = self.next_pass_after(ephem.now())
         fails = 0
-        while deg(np.maximum_altitude) < min_el and fails < 100:
+        while deg(np.maximum_altitude) < min_el and fails < max_lookahead:
             fails += 1
             np = self.next_pass_after(np.set_time)
-        if fails >= 100:
+        if fails >= max_lookahead:
             logger.info(
                 "The TLE or station location is fishy. Unable to find a pass with elevation >%f°",
                 min_el,

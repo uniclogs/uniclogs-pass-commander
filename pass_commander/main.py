@@ -1,6 +1,5 @@
 import logging
 import socket
-import traceback
 from argparse import ArgumentParser, Namespace, RawTextHelpFormatter
 from ipaddress import IPv4Address
 from math import degrees as deg
@@ -8,12 +7,11 @@ from pathlib import Path
 from textwrap import dedent
 from threading import Thread
 from time import sleep
-from typing import Optional
 
 import ephem
+from apscheduler.schedulers.background import BackgroundScheduler
 from jeepney import DBusAddress, Properties
 from jeepney.io.blocking import open_dbus_connection
-from apscheduler.schedulers.background import BackgroundScheduler
 
 from . import config, mock
 from .navigator import Navigator
@@ -32,22 +30,25 @@ class Main:
         rotator: Rotator,
         radio: Radio,
         station: Station,
-    ):
+    ) -> None:
+        '''Create the main pass coordinator.'''
         self.track = tracker
         self.rot = rotator
         self.rad = radio
         self.sta = station
         self.scheduler = BackgroundScheduler()
         self.scheduler.start()
-        self.nav: Optional[Navigator] = None
+        self.nav: Navigator | None = None
 
-    def NTPSynchronized(self) -> bool:
-        # FIXME:
-        # Paraphrased from man org.freedesktop.timedate1: NTPSynchronized shows
-        # whether the kernel reports the time as synchronized, reported by the
-        # system call adjtimex(3). The purpose of this D-Bus property is to
-        # allow remote clients to access this information. Local clients can
-        # access the information directly.
+        self.min_el = ephem.degrees(10.0)
+        self.max_temp = 30.0
+
+    def ntp_synchronized(self) -> bool:
+        # FIXME: Paraphrased from man org.freedesktop.timedate1:
+        # NTPSynchronized shows whether the kernel reports the time as
+        # synchronized, reported by the system call adjtimex(3). The purpose of
+        # this D-Bus property is to allow remote clients to access this
+        # information. Local clients can access the information directly.
         #
         # I'd prefer to not use D-Bus but I can't find any existing Python
         # bindings for adjtimex() and the struct argument is sufficiently
@@ -60,16 +61,16 @@ class Main:
             )
         ).get("NTPSynchronized")
         with open_dbus_connection(bus='SYSTEM') as con:
-            return con.send_and_get_reply(msg).body[0][1]
+            return bool(con.send_and_get_reply(msg).body[0][1])
 
     def require_clock_sync(self) -> None:
-        while not self.NTPSynchronized():
+        while not self.ntp_synchronized():
             logger.warning("System clock is not synchronized. Sleeping 60 seconds.")
             sleep(60)
         logger.info("System clock is synchronized.")
 
     def edl(self, packet: bytes, offset: ephem.Date) -> None:
-        self.rad.set_tx_frequency(self.track.freshen(ephem.Date(ephem.now() + offset)))
+        self.rad.set_tx_frequency(self.track.freshen(ephem.Date(self.track.now() + offset)))
         self.rad.edl(packet)
 
     def autorun(self, tx_gain: int, count: int, edl_port: int) -> None:
@@ -85,10 +86,12 @@ class Main:
                 sleep(seconds)
             count -= 1
 
-    def work_pass(self, tx_gain: int, edl_port: int, offset: ephem.Date) -> None:
+    def work_pass(self, tx_gain: int, edl_port: int, offset: ephem.Date) -> None:  # noqa: PLR0915
         degc = self.sta.gettemp()
-        if degc > 30:
-            logger.info("Temperature is too high (%f°C). Skipping this pass.", degc)
+        if degc > self.max_temp:
+            logger.info(
+                "Temperature is too high (%f°C > %f°C). Skipping this pass.", degc, self.max_temp
+            )
             sleep(1)
             return
         self.track.calibrate()
@@ -121,20 +124,20 @@ class Main:
         logger.info("Sent Morse ident")
         self.sta.ptt_off()
         logger.info("Station PTT off")
-        logger.info("Waiting for bird to reach 10°el")
-        while deg(self.track.azel().el) < 10:
+        logger.info("Waiting for bird to reach %d°el", self.min_el)
+        while deg(self.track.azel().el) < self.min_el:
             sleep(0.1)
-        logger.info("Bird above 10°el")
+        logger.info("Bird above %d°el", self.min_el)
         source = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         source.bind(("", edl_port))
         source.settimeout(0.5)
         logger.info("EDL socket open")
         self.sta.ptt_on()
         logger.info("Station PTT on")
-        while deg(self.track.azel().el) >= 10:
+        while deg(self.track.azel().el) >= self.min_el:
             try:
                 packet = source.recv(4096)
-            except socket.timeout:
+            except TimeoutError:
                 continue
             self.edl(packet, offset)
             logger.info("Sent EDL")
@@ -156,8 +159,9 @@ class Main:
         logger.info("Station shutdown TX amp")
 
     def update_rotator(self, offset: ephem.Date) -> None:
-        assert self.nav is not None
-        azel = self.nav.azel(self.track.freshen(ephem.Date(ephem.now() + offset)).azel())
+        if self.nav is None:
+            raise ValueError("self.nav was not initialized")
+        azel = self.nav.azel(self.track.freshen(ephem.Date(self.track.now() + offset)).azel())
         self.rot.go(config.AzEl(*(deg(x) for x in azel)))
         self.rad.set_rx_frequency(self.track)
 
@@ -193,6 +197,7 @@ class Main:
 
 
 def start(action: str, conf: config.Config) -> None:
+    '''Start the actual pass-commander after arguments and config have been processed.'''
     tracker = Tracker(
         (conf.lat, conf.lon, conf.alt),
         sat_id=conf.sat_id,
@@ -221,7 +226,7 @@ def start(action: str, conf: config.Config) -> None:
         logger.info("Unknown action: %s", action)
 
 
-def handle_args() -> Namespace:
+def handle_args() -> Namespace:  # noqa: D103
     parser = ArgumentParser(formatter_class=RawTextHelpFormatter)
     parser.add_argument(
         "-a",
@@ -305,14 +310,12 @@ def handle_args() -> Namespace:
     return parser.parse_args()
 
 
-def cfgerr(args: Namespace, msg: str) -> None:
-    if args.verbose:
-        traceback.print_exc()
-        print()
-    print(f"In '{args.config}'", msg)
+def _cfgerr(args: Namespace, msg: str) -> None:
+    logger.debug("Config error", exc_info=True)
+    logger.error("In '%s': %s", args.config, msg)
 
 
-def main() -> None:
+def main() -> None:  # noqa: D103 C901 PLR0912 PLR0915
     logging.basicConfig(level=logging.INFO)
     logging.getLogger("apscheduler").setLevel(logging.ERROR)
 
@@ -324,33 +327,33 @@ def main() -> None:
         try:
             config.Config.template(args.config)
         except FileExistsError:
-            cfgerr(args, 'delete existing file before creating template')
+            _cfgerr(args, 'delete existing file before creating template')
         else:
-            print(f"Config template generated at '{args.config}'")
-            print(f"Edit '{args.config}' <template text> before running again")
+            logger.info("Config template generated at '%s'", args.config)
+            logger.info("Edit '%s' <template text> before running again", args.config)
         return
 
     try:
         conf = config.Config(args.config)
     except config.ConfigNotFoundError as e:
-        cfgerr(
+        _cfgerr(
             args,
             f"the file is missing ({type(e.__cause__).__name__}). Initialize using --template",
         )
     except config.InvalidTomlError as e:
-        cfgerr(args, f"there is invalid toml: {e}\nPossibly an unquoted string?")
+        _cfgerr(args, f"there is invalid toml: {e}\nPossibly an unquoted string?")
     except config.MissingKeyError as e:
-        cfgerr(args, f"required key '{e.table}.{e.key}' is missing")
+        _cfgerr(args, f"required key '{e.table}.{e.key}' is missing")
     except config.TemplateTextError as e:
-        cfgerr(args, f"key '{e}' still has template text. Replace <angle brackets>")
+        _cfgerr(args, f"key '{e}' still has template text. Replace <angle brackets>")
     except config.UnknownKeyError as e:
-        cfgerr(args, f"remove unknown keys: {' '.join(e.keys)}")
+        _cfgerr(args, f"remove unknown keys: {' '.join(e.keys)}")
     except config.KeyValidationError as e:
-        cfgerr(args, f"key '{e.table}.{e.key}' has invalid type {e.actual}, expected {e.expect}")
+        _cfgerr(args, f"key '{e.table}.{e.key}' has invalid type {e.actual}, expected {e.expect}")
     except config.IpValidationError as e:
-        cfgerr(args, f"contents of '{e.table}.{e.key}' is not a valid IP")
+        _cfgerr(args, f"contents of '{e.table}.{e.key}' is not a valid IP")
     except config.TleValidationError as e:
-        cfgerr(args, f"TLE '{e.name}' is invalid: {e.__cause__}")
+        _cfgerr(args, f"TLE '{e.name}' is invalid: {e.__cause__}")
     else:
         conf.mock = set(args.mock or [])
         if 'all' in conf.mock:
@@ -359,7 +362,9 @@ def main() -> None:
         conf.txgain = args.tx_gain or conf.txgain
         conf.sat_id = args.satellite or conf.sat_id
         if not conf.sat_id:
-            print("No satellite specified. Set on command line (see --help) or in config file.")
+            logger.error(
+                "No satellite specified. Set on command line (see --help) or in config file."
+            )
             return
         conf.pass_count = args.pass_count
         if 'con' in conf.mock:

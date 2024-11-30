@@ -7,15 +7,31 @@ from .tracker import Tracker
 
 
 class Radio:
-    def __init__(self, host: str, xml_port: int, edl_port: int):
+    def __init__(self, host: str, xml_port: int, edl_port: int) -> None:
+        '''Binding to the uniclogs-sdr GNURadio flowgraph.
+
+        The flowgraph exposes an xmlrpc interface for configuration and setting doppler offsets.
+        It additionally has a UDP port for EDL communication.
+
+        Parameters
+        ----------
+        host
+            IP address of the radio
+        xml_port
+            port of the xmlrpc server
+        edl_port
+            port of the EDL UDP socket
+        '''
         self._edl = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._edl.connect((host, edl_port))
         self._lock = Lock()
         self._flowgraph = ServerProxy(f"http://{host}:{xml_port}")
         tx = self._flowgraph.get_tx_center_frequency()
         rx = self._flowgraph.get_rx_target_frequency()
-        assert isinstance(tx, float)
-        assert isinstance(rx, float)
+        if not isinstance(tx, float):
+            raise TypeError("Flowgraph returned invalid tx type")
+        if not isinstance(rx, float):
+            raise TypeError("Flowgraph returned invalid rx type")
         self.txfreq = tx
         self.rxfreq = rx
 
@@ -27,7 +43,7 @@ class Radio:
         self.set_tx_selector(old_selector)
 
     def rx_frequency(self, track: Tracker) -> float:
-        # RX on the ground frequeny. track.doppler is the satellite relative velocity scaled, so it
+        # RX on the ground frequency. track.doppler is the satellite relative velocity scaled, so it
         # starts negative and goes positive, so the frequency starts high and goes low
         return (1 - track.doppler) * self.rxfreq
 
@@ -50,7 +66,8 @@ class Radio:
     def get_tx_selector(self) -> str:
         with self._lock:
             val = self._flowgraph.get_tx_selector()
-            assert isinstance(val, str)
+            if not isinstance(val, str):
+                raise TypeError("Flowgraph returned invalid tx_selector type")
             return val
 
     def set_tx_gain(self, gain: int) -> None:
@@ -64,7 +81,8 @@ class Radio:
     def get_morse_bump(self) -> int:
         with self._lock:
             val = self._flowgraph.get_morse_bump()
-            assert isinstance(val, int)
+            if not isinstance(val, int):
+                raise TypeError("Flowgraph returned invalid morse_bump type")
             return val
 
     def edl(self, packet: bytes) -> None:
