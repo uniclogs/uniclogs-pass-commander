@@ -1,10 +1,8 @@
-import unittest
-
 from pass_commander.mock import Stationd
 from pass_commander.station import Station
 
 
-class TestStation(unittest.TestCase):
+class TestStation:
     def test_pa(self) -> None:
         addr = ("127.0.0.2", 5006)
         Stationd(*addr).start()

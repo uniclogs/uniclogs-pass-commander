@@ -116,7 +116,7 @@ class Tracker:
         # both values should be float but ephem lacks type annotations.
         return float(self.sat.range_velocity / ephem.c)
 
-    def _next_pass_after(self, date: ephem.Date, singlepass: bool = True) -> PassInfo:
+    def next_pass_after(self, date: ephem.Date, singlepass: bool = True) -> PassInfo:
         self.obs.date = date
         info = self.obs.next_pass(self.sat, singlepass)
 
@@ -126,11 +126,11 @@ class Tracker:
         return PassInfo(info[0], info[1], info[2], info[3], info[4], info[5], self.sat.az)
 
     def get_next_pass(self, min_el: float = 15.0) -> PassInfo:
-        np = self._next_pass_after(ephem.now())
+        np = self.next_pass_after(ephem.now())
         fails = 0
         while deg(np.maximum_altitude) < min_el and fails < 100:
             fails += 1
-            np = self._next_pass_after(np.set_time)
+            np = self.next_pass_after(np.set_time)
         if fails >= 100:
             logger.info(
                 "The TLE or station location is fishy. Unable to find a pass with elevation >%f°",
@@ -139,15 +139,15 @@ class Tracker:
         return np
 
     def sleep_until_next_pass(self, min_el: float = 15.0) -> PassInfo:
-        np = self._next_pass_after(ephem.now(), singlepass=False)
+        np = self.next_pass_after(ephem.now(), singlepass=False)
         if np.rise_time > np.set_time and self.obs.date < np.maximum_altitude_time:
             # FIXME we could use np.maximum_altitude_time instead of np.set_time to see if we are
             # in the first half of the pass
             logger.info("In a pass now!")
-            return self._next_pass_after(ephem.Date(self.obs.date - (30 * ephem.minute)))
-        np = self._next_pass_after(ephem.now())
+            return self.next_pass_after(ephem.Date(self.obs.date - (30 * ephem.minute)))
+        np = self.next_pass_after(ephem.now())
         while deg(np.maximum_altitude) < min_el:
-            np = self._next_pass_after(np.set_time)
+            np = self.next_pass_after(np.set_time)
         seconds = (np.rise_time - ephem.now()) / ephem.second
         logger.info(
             "Sleeping %s until next rise time %s for a %.2f°el pass.",

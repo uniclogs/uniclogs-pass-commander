@@ -1,4 +1,3 @@
-import unittest
 from itertools import pairwise
 from threading import Thread
 
@@ -9,7 +8,7 @@ from pass_commander.radio import Radio
 from pass_commander.tracker import Tracker
 
 
-class TestRadio(unittest.TestCase):
+class TestRadio:
     def test_doppler(self) -> None:
         flowgraph = Flowgraph("127.0.0.2", 10080)
         rx = []
@@ -28,7 +27,7 @@ class TestRadio(unittest.TestCase):
                     "ORESAT0",
                     "1 52017U 22026K   24237.61773939  .00250196  00000+0  18531-2 0  9992",
                     "2 52017  97.4861 255.7395 0002474 307.8296  52.2743 15.72168729136382",
-                ]
+                ],
             },
         )
         date = ephem.Date(45541.170401489704)  # start of a pass, determined through divination
@@ -45,13 +44,13 @@ class TestRadio(unittest.TestCase):
         radio.close()
 
         # RX doppler moves from high frequency to low frequency, passing over the center frequency
-        self.assertTrue(rx[0] > radio.rxfreq > rx[-1])
+        assert rx[0] > radio.rxfreq > rx[-1]
         # monotonically decreasing
-        self.assertTrue(all(x > y for x, y in pairwise(rx)))
+        assert all(x > y for x, y in pairwise(rx))
 
         # TX does the opposite, monotonically low -> high, again passing the center frequency
-        self.assertTrue(tx[0] < radio.txfreq < tx[-1])
-        self.assertTrue(all(x < y for x, y in pairwise(tx)))
+        assert tx[0] < radio.txfreq < tx[-1]
+        assert all(x < y for x, y in pairwise(tx))
 
     def test_ident(self) -> None:
         addr = ("127.0.0.2", 10081)
@@ -75,7 +74,7 @@ class TestRadio(unittest.TestCase):
 
         mode = 'cw'
         radio.set_tx_selector(mode)
-        self.assertEqual(radio.get_tx_selector(), mode)
+        assert radio.get_tx_selector() == mode
 
         flowgraph.stop()
         fgthread.join()
@@ -104,11 +103,11 @@ class TestRadio(unittest.TestCase):
 
         bump = 0
         radio.set_morse_bump(bump)
-        self.assertEqual(radio.get_morse_bump(), bump)
+        assert radio.get_morse_bump() == bump
 
         bump = 1
         radio.set_morse_bump(bump)
-        self.assertEqual(radio.get_morse_bump(), bump)
+        assert radio.get_morse_bump() == bump
 
         flowgraph.stop()
         fgthread.join()

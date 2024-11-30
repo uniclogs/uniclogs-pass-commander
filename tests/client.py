@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tiny testing script to send ascii hex bytes from stdin to the Pass Commander EDL socket"""
+"""Tiny testing script to send ascii hex bytes from stdin to the Pass Commander EDL socket."""
 
 import socket
 from argparse import ArgumentParser
@@ -7,7 +7,7 @@ from contextlib import suppress
 from time import sleep
 
 
-def main() -> None:
+def _main() -> None:
     parser = ArgumentParser("Send ascii hex from stdin to the EDL socket")
     parser.add_argument(
         "-p",
@@ -31,4 +31,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     with suppress(KeyboardInterrupt):
-        main()
+        _main()

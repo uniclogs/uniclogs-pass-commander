@@ -39,6 +39,9 @@ When your config is all set up, run with `pass-commander`. See the
 Testing without rotctld, stationd and a running radio flowgraph is partially
 supported. See the `--mock` flag, especially `-m all`.
 
+### Testing
+To verify that the repo is set up correctly run the tests with `pytest`
+
 ## Building
 To produce a python package `python -m build`. The result, a wheel, will be in `dist/`.
 
