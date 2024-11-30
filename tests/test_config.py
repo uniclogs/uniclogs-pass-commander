@@ -5,6 +5,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile, gettempdir
 
 import tomlkit
+from tomlkit.toml_document import TOMLDocument
 
 from pass_commander import config
 from pass_commander.config import Config
@@ -12,7 +13,7 @@ from pass_commander.config import Config
 
 class TestConfig(unittest.TestCase):
     @staticmethod
-    def good_config() -> tomlkit.TOMLDocument:
+    def good_config() -> TOMLDocument:
         cfg = tomlkit.document()
 
         main = tomlkit.table()

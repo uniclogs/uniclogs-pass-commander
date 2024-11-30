@@ -24,191 +24,179 @@
 #    - add a mode for decoding arbitrary sats, then test
 
 import argparse
-import logging as log
+import logging
 import socket
 import traceback
+from ipaddress import IPv4Address
 from math import degrees as deg
+from threading import Thread
 from time import sleep
+from typing import Optional
 
 import ephem
 import pydbus
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from . import config
+from . import config, mock
 from .Navigator import Navigator
 from .Radio import Radio
 from .Rotator import Rotator
 from .Station import Station
 from .Tracker import Tracker
 
+logger = logging.getLogger(__name__)
+
 
 class Main:
     def __init__(
         self,
-        tracker,
-        rotator,
-        radio,
-        station,
-        scheduler,
+        tracker: Tracker,
+        rotator: Rotator,
+        radio: Radio,
+        station: Station,
     ):
         self.track = tracker
         self.rot = rotator
         self.rad = radio
         self.sta = station
-        self.scheduler = scheduler
+        self.scheduler = BackgroundScheduler()
         self.scheduler.start()
-        self.nav = None
+        self.nav: Optional[Navigator] = None
 
-    def NTPSynchronized(self):
-        return pydbus.SystemBus().get(".timedate1").NTPSynchronized
+    def NTPSynchronized(self) -> bool:
+        return bool(pydbus.SystemBus().get(".timedate1").NTPSynchronized)
 
-    def require_clock_sync(self):
+    def require_clock_sync(self) -> None:
         while not self.NTPSynchronized():
-            print("System clock is not synchronized. Sleeping 60 seconds.")
+            logger.warning("System clock is not synchronized. Sleeping 60 seconds.")
             sleep(60)
-        print("System clock is synchronized.")
+        logger.info("System clock is synchronized.")
 
-    def edl(self, packet):
-        self.rad.set_tx_frequency(self.track.freshen())
+    def edl(self, packet: bytes, offset: ephem.Date) -> None:
+        self.rad.set_tx_frequency(self.track.freshen(ephem.Date(ephem.now() + offset)))
         self.rad.edl(packet)
 
-    def autorun(self, tx_gain, count=9999, edl_port=10025, no_tx=False, local_only=False):
-        print(f"Running for {count} passes")
+    def autorun(self, tx_gain: int, count: int, edl_port: int) -> None:
+        logger.info("Running for %d passes", count)
         while count > 0:
             self.require_clock_sync()
             np = self.track.sleep_until_next_pass()
-            self.nav = Navigator(self.track, *np)
-            self.work_pass(tx_gain, edl_port, no_tx, local_only)
-            seconds = (np[4] - ephem.now()) / ephem.second + 1
+            self.nav = Navigator(np)
+            self.work_pass(tx_gain, edl_port, ephem.Date(0))
+            seconds = (np.set_time - ephem.now()) / ephem.second + 1
             if seconds > 0:
-                print(f"Sleeping {seconds:.3f} seconds until pass is really over.")
+                logger.info("Sleeping %.3f seconds until pass is really over.", seconds)
                 sleep(seconds)
             count -= 1
 
-    def work_pass(self, tx_gain, edl_port, no_tx, local_only):
-        if local_only:
-            return self.test_bg_rotator()
+    def work_pass(self, tx_gain: int, edl_port: int, offset: ephem.Date) -> None:
         degc = self.sta.gettemp()
         if degc > 30:
-            print(f"Temperature is too high ({degc}°C). Skipping this pass.")
+            logger.info("Temperature is too high (%f°C). Skipping this pass.", degc)
             sleep(1)
             return
         self.track.calibrate()
-        print("Adjusted for temp/pressure")
-        self.update_rotator()
-        print("Started rotator movement")
+        logger.info("Adjusted for temp/pressure")
+        self.update_rotator(offset)
+        logger.info("Started rotator movement")
         sleep(2)
-        self.scheduler.add_job(self.update_rotator, "interval", seconds=0.5)
-        print("Scheduled rotator")
-        self.rad.command("set_tx_selector", "edl")
-        print("Selected EDL TX")
-        self.rad.command("set_tx_gain", tx_gain)
-        print("Set TX gain")
+        self.scheduler.add_job(self.update_rotator, "interval", seconds=0.5, args=[offset])
+        logger.info("Scheduled rotator")
+        self.rad.set_tx_selector("edl")
+        logger.info("Selected EDL TX")
+        self.rad.set_tx_gain(tx_gain)
+        logger.info("Set TX gain")
         sleep(2)
-        print("Rotator should be moving by now")
-        while self.rot.share["moving"] == True:
+        logger.info("Rotator should be moving by now")
+        while self.rot.is_moving:
             sleep(0.1)
-        if self.rot.share["moving"]:
-            print("Rotator communication anomaly detected. Skipping this pass.")
+        if self.rot.is_moving:
+            logger.error("Rotator communication anomaly detected. Skipping this pass.")
             self.scheduler.remove_all_jobs()
             sleep(1)
             return
-        print("Stopped moving")
+        logger.info("Stopped moving")
         self.sta.pa_on()
-        print("Station amps on")
+        logger.info("Station amps on")
         sleep(0.2)
         self.sta.ptt_on()
-        print("Station PTT on")
+        logger.info("Station PTT on")
         self.rad.ident()
-        print("Sent Morse ident")
+        logger.info("Sent Morse ident")
         self.sta.ptt_off()
-        print("Station PTT off")
-        print("Waiting for bird to reach 10°el")
-        while self.track.share["target_el"] < 10:
+        logger.info("Station PTT off")
+        logger.info("Waiting for bird to reach 10°el")
+        while deg(self.track.azel().el) < 10:
             sleep(0.1)
-        print("Bird above 10°el")
-        if not no_tx:
-            source = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            source.bind(("", edl_port))
-            source.settimeout(0.5)
-        print("EDL socket open")
+        logger.info("Bird above 10°el")
+        source = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        source.bind(("", edl_port))
+        source.settimeout(0.5)
+        logger.info("EDL socket open")
         self.sta.ptt_on()
-        print("Station PTT on")
-        while self.track.share["target_el"] >= 10:
-            if no_tx:
-                sleep(0.5)
-                continue
+        logger.info("Station PTT on")
+        while deg(self.track.azel().el) >= 10:
             try:
                 packet = source.recv(4096)
             except socket.timeout:
                 continue
-            self.edl(packet)
-            print("Sent EDL")
+            self.edl(packet, offset)
+            logger.info("Sent EDL")
         self.scheduler.remove_all_jobs()
-        print("Removed scheduler jobs")
+        logger.info("Removed scheduler jobs")
         source.close()
-        print("EDL socket closed")
+        logger.info("EDL socket closed")
         self.rad.ident()
-        print("Sent Morse ident")
+        logger.info("Sent Morse ident")
         self.sta.ptt_off()
-        print("Station PTT off")
-        self.rad.command("set_tx_gain", 3)
-        print("Set TX gain to min")
+        logger.info("Station PTT off")
+        self.rad.set_tx_gain(3)
+        logger.info("Set TX gain to min")
         self.rot.park()
-        print("Parked rotator")
-        print("Waiting for PA to cool")
+        logger.info("Parked rotator")
+        logger.info("Waiting for PA to cool")
         sleep(120)
         self.sta.pa_off()
-        print("Station shutdown TX amp")
+        logger.info("Station shutdown TX amp")
 
-    def update_rotator(self):
-        azel = self.nav.azel(self.track.freshen().azel())
-        self.rot.go(*tuple(deg(x) for x in azel))
+    def update_rotator(self, offset: ephem.Date) -> None:
+        assert self.nav is not None
+        azel = self.nav.azel(self.track.freshen(ephem.Date(ephem.now() + offset)).azel())
+        self.rot.go(config.AzEl(*(deg(x) for x in azel)))
         self.rad.set_rx_frequency(self.track)
 
     # Testing stuff goes below here
 
-    def dryrun_time(self):
-        self.track.obs.date = self.track.obs.date + (30 * ephem.second)
-        self.track.sat.compute(self.track.obs)
-        self.nav.azel(self.track.azel())
-
-    def dryrun(self):
+    def dryrun(self) -> None:
         np = self.track.get_next_pass(80)
-        self.nav = Navigator(self.track, *np)
-        self.track.obs.date = np[0]
-        self.scheduler.add_job(self.dryrun_time, "interval", seconds=0.2)
-        sleep(4.5)
-        self.scheduler.remove_all_jobs()
+        self.nav = Navigator(np)
+        self.track.obs.date = np.rise_time
+        self.work_pass(tx_gain=3, edl_port=10025, offset=np.rise_time - ephem.now())
 
-    def test_rotator(self):
+    def test_rotator(self) -> None:
         while True:
-            print(self.update_rotator())
+            self.update_rotator()
             sleep(0.1)
 
-    def test_bg_rotator(self):
+    def test_bg_rotator(self) -> None:
         self.scheduler.add_job(self.update_rotator, "interval", seconds=0.5)
         while True:
             sleep(1000)
-            # print(self.rot.share['moving'])
 
-    def test_doppler(self):
+    def test_doppler(self) -> None:
         while True:
             rxfinal = self.rad.rx_frequency(self.track.freshen())
             txfinal = self.rad.tx_frequency(self.track)
-            print(f"RX = {rxfinal:.3f}  TX = {txfinal:.3f}")
+            logger.info("RX = %.3f  TX = %.3f", rxfinal, txfinal)
             sleep(0.1)
 
-    def test_morse(self):
+    def test_morse(self) -> None:
         while True:
             self.rad.ident()
             sleep(30)
 
 
 def start(action: str, conf: config.Config) -> None:
-    log.basicConfig()
-    log.getLogger("apscheduler").setLevel(log.ERROR)
-
     tracker = Tracker(
         (conf.lat, conf.lon, conf.alt),
         sat_id=conf.sat_id,
@@ -216,25 +204,16 @@ def start(action: str, conf: config.Config) -> None:
         tle_cache=conf.tle_cache,
         owmid=conf.owmid,
     )
-    rotator = Rotator(
-        str(conf.rotator),
-        az_cal=conf.az_cal,
-        el_cal=conf.el_cal,
-        local_only='con' in conf.mock,
-        no_rot='rot' in conf.mock,
-    )
-    radio = Radio(str(conf.radio), local_only='con' in conf.mock)
-    station = Station(str(conf.station), no_tx='tx' in conf.mock)
-    scheduler = BackgroundScheduler()
+    rotator = Rotator(None if 'con' in conf.mock else str(conf.rotator), cal=conf.cal)
+    radio = Radio(str(conf.radio), conf.radio_xmlrpc, conf.radio_edl)
+    station = Station(str(conf.station))
 
-    commander = Main(tracker, rotator, radio, station, scheduler)
+    commander = Main(tracker, rotator, radio, station)
     if action == 'run':
         commander.autorun(
             tx_gain=conf.txgain,
             count=conf.pass_count,
             edl_port=conf.edl_port,
-            no_tx='tx' in conf.mock,
-            local_only='con' in conf.mock,
         )
     elif action == 'dryrun':
         commander.dryrun()
@@ -243,7 +222,7 @@ def start(action: str, conf: config.Config) -> None:
     elif action == 'nextpass':
         commander.track.sleep_until_next_pass()
     else:
-        print(f"Unknown action: {action}")
+        logger.info("Unknown action: %s", action)
 
 
 def cfgerr(args: argparse.Namespace, msg: str) -> None:
@@ -254,6 +233,9 @@ def cfgerr(args: argparse.Namespace, msg: str) -> None:
 
 
 def main(args: argparse.Namespace) -> None:
+    logging.basicConfig(level=logging.INFO)
+    logging.getLogger("apscheduler").setLevel(logging.ERROR)
+
     if args.config.is_dir():
         args.config /= "pass_commander.toml"
 
@@ -299,5 +281,18 @@ def main(args: argparse.Namespace) -> None:
             print("No satellite specified. Set on command line (see --help) or in config file.")
             return
         conf.pass_count = args.pass_count
+        if 'con' in conf.mock:
+            # Radio mock
+            conf.radio = IPv4Address("127.0.0.2")
+            conf.radio_edl = 10125
+            mock.Edl(str(conf.radio), conf.radio_edl).start()
+            flowgraph = mock.Flowgraph(str(conf.radio), 10080)
+            Thread(target=flowgraph.start, daemon=True).start()
+            # Tracker mock
+            conf.owmid = ''
+
+        if 'tx' in conf.mock:
+            conf.station = IPv4Address("127.0.0.2")
+            mock.Stationd(str(conf.station), 5005).start()
 
         start(args.action, conf)

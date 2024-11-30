@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 
+import logging
 import socket
 from argparse import ArgumentParser
 from threading import Thread
 from xmlrpc.server import SimpleXMLRPCServer
+
+logger = logging.getLogger(__name__)
 
 
 class Edl(Thread):
@@ -15,7 +18,7 @@ class Edl(Thread):
         edl = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         edl.bind(self.addr)
         while True:
-            print(edl.recv(4096).hex())
+            logger.info("EDL %s", edl.recv(4096))
 
 
 class Flowgraph:
@@ -32,34 +35,34 @@ class Flowgraph:
     def stop(self) -> None:
         self.server.shutdown()
 
-    def get_tx_center_frequency(self) -> int:
-        return 1_265_000_000
+    def get_tx_center_frequency(self) -> float:
+        return 1_265_000_000.0
 
-    def get_rx_target_frequency(self) -> int:
-        return 436_500_000
+    def get_rx_target_frequency(self) -> float:
+        return 436_500_000.0
 
     def set_gpredict_tx_frequency(self, value: float) -> None:
-        print("TX Freq", value)
+        logger.info("TX Freq %f", value)
 
     def set_gpredict_rx_frequency(self, value: float) -> None:
-        print("RX Freq", value)
+        logger.info("RX Freq %f", value)
 
     def set_morse_bump(self, val: int) -> None:
         self.morse_bump = val
-        print("Morse bump", val)
+        logger.info("Morse bump %d", val)
 
     def get_morse_bump(self) -> int:
         return self.morse_bump
 
     def set_tx_selector(self, val: str) -> None:
         self.tx_selector = val
-        print("TX Selector", val)
+        logger.info("TX Selector %s", val)
 
     def get_tx_selector(self) -> str:
         return self.tx_selector
 
     def set_tx_gain(self, val: int) -> None:
-        print("TX Gain", val)
+        logger.info("TX Gain %d", val)
 
 
 if __name__ == '__main__':
@@ -81,7 +84,16 @@ if __name__ == '__main__':
         type=int,
         help="port to connect xmlrpc to, default is %(default)s",
     )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Verbose logging",
+    )
+
     args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING)
 
     Edl(args.host, args.uplink_edl_port).start()
     Flowgraph(args.host, args.doppler_xmlrpc_port).start()

@@ -7,7 +7,7 @@ from contextlib import suppress
 from time import sleep
 
 
-def main():
+def main() -> None:
     parser = ArgumentParser("Send ascii hex from stdin to the EDL socket")
     parser.add_argument(
         "-p",

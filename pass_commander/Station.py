@@ -19,49 +19,44 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 
-
+import logging
+import re
 import socket
 from time import sleep
-import re
+
+logger = logging.getLogger(__name__)
 
 
 class Station:
-    def __init__(self, host, station_port=5005, band="l-band", no_tx=False):
+    def __init__(self, host: str, station_port: int = 5005, band: str = "l-band"):
         self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.addr = (host, station_port)
+        self.s.connect((host, station_port))
         self.band = band
-        self.no_tx = no_tx
 
-    def command(self, verb):
-        if self.no_tx and re.search(r"pa-power|rf-ptt", verb):
-            print("Not sending command: ", verb)
-            return ''
+    def _command(self, verb: str) -> str:
         if re.match(
             r"^(gettemp|((l-band|uhf) (pa-power|rf-ptt)|rotator) (on|off|status))$",
             verb,
         ):
-            print(f"Sending command: {verb}")
-            self.s.sendto((verb).encode(), self.addr)
-            return self.response()
+            logger.info("Sending command: %s", verb)
+            self.s.send(verb.encode())
+            return self._response()
+        else:
+            logger.warning("invalid command: %s", verb)
+            return ''
 
-    def commands(self, *verbs):
-        for v in verbs:
-            ret = self.command(v)
-            sleep(0.1)
-        return ret
-
-    def response(self):
-        data, addr = self.s.recvfrom(4096)
+    def _response(self) -> str:
+        data = self.s.recv(4096)
         stat = data.decode().strip()
-        print(f"StationD response: {stat}")
+        logger.info("StationD response: %s", stat)
         return stat
 
-    def pa_on(self):
-        self.command(f"{self.band} pa-power on")
-        return self.command(f"{self.band} pa-power on")
+    def pa_on(self) -> str:
+        self._command(f"{self.band} pa-power on")
+        return self._command(f"{self.band} pa-power on")
 
-    def pa_off(self):
-        ret = self.command(f"{self.band} pa-power off")
+    def pa_off(self) -> str:
+        ret = self._command(f"{self.band} pa-power off")
         if re.search(r"PTT Conflict", ret):
             self.pa_off()
             sleep(120)
@@ -71,15 +66,18 @@ class Station:
             return self.pa_off()
         return ret
 
-    def ptt_on(self):
-        ret = self.command(f"{self.band} rf-ptt on")
+    def ptt_on(self) -> str:
+        ret = self._command(f"{self.band} rf-ptt on")
         # FIXME TIMING: wait for PTT to open (100ms is just a guess)
         sleep(0.1)
         return ret
 
-    def ptt_off(self):
-        return self.command(f"{self.band} rf-ptt off")
+    def ptt_off(self) -> str:
+        return self._command(f"{self.band} rf-ptt off")
 
-    def gettemp(self):
-        ret = self.command("gettemp")
+    def gettemp(self) -> float:
+        ret = self._command("gettemp")
         return float(ret[6:].strip())
+
+    def close(self) -> None:
+        self.s.close()
