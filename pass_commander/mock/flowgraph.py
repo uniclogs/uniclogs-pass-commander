@@ -10,7 +10,17 @@ logger = logging.getLogger(__name__)
 
 
 class Edl(Thread):
-    def __init__(self, host: str, port: int):
+    def __init__(self, host: str, port: int) -> None:
+        '''Thread that simulates an EDL listening connection.
+
+        Parameters
+        ----------
+        host
+            IP address to listen on. Recommend a non-localhost loopback (like
+            127.0.0.2) because pass-commander listens on 127.0.0.1.
+        port
+            Port to listen on.
+        '''
         super().__init__(name=self.__class__.__name__, daemon=True)
         self.addr = (host, port)
 
@@ -22,7 +32,16 @@ class Edl(Thread):
 
 
 class Flowgraph:
-    def __init__(self, host: str, port: int):
+    def __init__(self, host: str, port: int) -> None:
+        '''Simulate xmlrpc flowgraph interface for testing.
+
+        Parameters
+        ----------
+        host
+            IP address to listen on, usually localhost or some loopback.
+        port
+            port to listen on.
+        '''
         self.morse_bump = 0
         self.tx_selector = "edl"
 

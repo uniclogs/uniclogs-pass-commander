@@ -24,19 +24,27 @@ commands to the [OreSat0](https://www.oresat.org/satellites/oresat0) and
 ## Installing
 ```sh
 git clone https://github.com/uniclogs/uniclogs-pass_commander.git
-sudo apt install python3-pip python3-hamlib python3-pydbus
-pip3 install -r uniclogs-pass_commander/requirements.txt
+sudo apt install python3-pip python3-hamlib
+pip3 install -e uniclogs-pass_commander[dev]
 ```
 
-Running `python3 uniclogs-pass_commander/ --template` will generate a
+Running `pass-commander --template` will generate a
 template configuration file. You should receive instructions for editing it. Go
 do that now (see below for detailed description).
 
-When your config is all set up, run with `python3 uniclogs-pass_commander/`.
-See the `--help` flag for more options.
+When your config is all set up, run with `pass-commander`. See the
+`--help` flag for more options. For example `pass-commander -s 60525
+-m all -a dryrun`.
 
 Testing without rotctld, stationd and a running radio flowgraph is partially
 supported. See the `--mock` flag, especially `-m all`.
+
+### Testing
+To verify that the repo is set up correctly run the tests with `pytest`
+
+## Building
+To produce a python package `python -m build`. The result, a wheel, will be in `dist/`.
+
 
 ## Config file
 It's [TOML](https://toml.io/en/). There are four primary sections, each with
