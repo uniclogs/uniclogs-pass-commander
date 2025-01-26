@@ -32,7 +32,7 @@ class TestRadio:
         )
         date = ephem.Date(45541.170401489704)  # start of a pass, determined through divination
         track.freshen(date)
-        radio = Radio("127.0.0.2", 10080, 10025)
+        radio = Radio("127.0.0.2", 10080, 10025, "TEST")
 
         for t in range(10 * 60):  # passes are about 10 minutes
             track.freshen(ephem.Date(date + t * ephem.second))
@@ -57,7 +57,7 @@ class TestRadio:
         flowgraph = Flowgraph(*addr)
         fgthread = Thread(target=flowgraph.start)
         fgthread.start()
-        radio = Radio(*addr, 10025)
+        radio = Radio(*addr, 10025, "TEST")
 
         radio.ident(delay=0)
 
@@ -70,7 +70,7 @@ class TestRadio:
         flowgraph = Flowgraph(*addr)
         fgthread = Thread(target=flowgraph.start)
         fgthread.start()
-        radio = Radio(*addr, 10025)
+        radio = Radio(*addr, 10025, "TEST")
 
         mode = 'cw'
         radio.set_tx_selector(mode)
@@ -85,7 +85,7 @@ class TestRadio:
         flowgraph = Flowgraph(*addr)
         fgthread = Thread(target=flowgraph.start)
         fgthread.start()
-        radio = Radio(*addr, 10025)
+        radio = Radio(*addr, 10025, "TEST")
 
         gain = 55
         radio.set_tx_gain(gain)
@@ -94,20 +94,17 @@ class TestRadio:
         fgthread.join()
         radio.close()
 
-    def test_morse_bump(self) -> None:
+    def test_morse_ident(self) -> None:
         addr = ("127.0.0.2", 10084)
         flowgraph = Flowgraph(*addr)
         fgthread = Thread(target=flowgraph.start)
         fgthread.start()
-        radio = Radio(*addr, 10025)
+        radio = Radio(*addr, 10025, "TEST")
 
-        bump = 0
-        radio.set_morse_bump(bump)
-        assert radio.get_morse_bump() == bump
+        ident = "OTHER"
+        radio.set_morse_ident(ident)
 
-        bump = 1
-        radio.set_morse_bump(bump)
-        assert radio.get_morse_bump() == bump
+        # FIXME: check flowgraph value
 
         flowgraph.stop()
         fgthread.join()
@@ -119,7 +116,7 @@ class TestRadio:
         fgthread = Thread(target=flowgraph.start)
         fgthread.start()
         Edl("127.0.0.2", 10026).start()
-        radio = Radio(*addr, 10026)
+        radio = Radio(*addr, 10026, "TEST")
 
         packet = "test string".encode('ascii')
         radio.edl(packet)

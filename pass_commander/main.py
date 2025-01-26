@@ -206,7 +206,7 @@ def start(action: str, conf: config.Config) -> None:
         owmid=conf.owmid,
     )
     rotator = Rotator(None if 'con' in conf.mock else str(conf.rotator), cal=conf.cal)
-    radio = Radio(str(conf.radio), conf.radio_xmlrpc, conf.radio_edl)
+    radio = Radio(str(conf.radio), conf.radio_xmlrpc, conf.radio_edl, conf.name)
     station = Station(str(conf.station))
 
     commander = Main(tracker, rotator, radio, station)

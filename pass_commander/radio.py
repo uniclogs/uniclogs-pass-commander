@@ -7,7 +7,7 @@ from .tracker import Tracker
 
 
 class Radio:
-    def __init__(self, host: str, xml_port: int, edl_port: int) -> None:
+    def __init__(self, host: str, xml_port: int, edl_port: int, name: str) -> None:
         '''Binding to the uniclogs-sdr GNURadio flowgraph.
 
         The flowgraph exposes an xmlrpc interface for configuration and setting doppler offsets.
@@ -21,6 +21,8 @@ class Radio:
             port of the xmlrpc server
         edl_port
             port of the EDL UDP socket
+        name
+            station identifier to be sent out over morse
         '''
         self._edl = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._edl.connect((host, edl_port))
@@ -34,11 +36,12 @@ class Radio:
             raise TypeError("Flowgraph returned invalid rx type")
         self.txfreq = tx
         self.rxfreq = rx
+        self.name = name
 
     def ident(self, delay: int = 4) -> None:
         old_selector = self.get_tx_selector()
         self.set_tx_selector("morse")
-        self.set_morse_bump(self.get_morse_bump() ^ 1)
+        self.set_morse_ident(self.name)
         sleep(delay)
         self.set_tx_selector(old_selector)
 
@@ -74,16 +77,9 @@ class Radio:
         with self._lock:
             self._flowgraph.set_tx_gain(gain)
 
-    def set_morse_bump(self, bump: int) -> None:
+    def set_morse_ident(self, ident: str) -> None:
         with self._lock:
-            self._flowgraph.set_morse_bump(bump)
-
-    def get_morse_bump(self) -> int:
-        with self._lock:
-            val = self._flowgraph.get_morse_bump()
-            if not isinstance(val, int):
-                raise TypeError("Flowgraph returned invalid morse_bump type")
-            return val
+            self._flowgraph.set_morse_ident(ident)
 
     def edl(self, packet: bytes) -> None:
         self._edl.send(packet)

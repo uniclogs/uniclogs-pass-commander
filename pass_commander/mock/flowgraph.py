@@ -42,7 +42,7 @@ class Flowgraph:
         port
             port to listen on.
         '''
-        self.morse_bump = 0
+        self.morse_ident = ''
         self.tx_selector = "edl"
 
         self.server = SimpleXMLRPCServer((host, port), allow_none=True, logRequests=False)
@@ -66,12 +66,12 @@ class Flowgraph:
     def set_gpredict_rx_frequency(self, value: float) -> None:
         logger.info("RX Freq %f", value)
 
-    def set_morse_bump(self, val: int) -> None:
-        self.morse_bump = val
+    def set_morse_ident(self, val: str) -> None:
+        self.morse_ident = val
         logger.info("Morse bump %d", val)
 
-    def get_morse_bump(self) -> int:
-        return self.morse_bump
+    def get_morse_ident(self) -> int:
+        return self.morse_ident
 
     def set_tx_selector(self, val: str) -> None:
         self.tx_selector = val
