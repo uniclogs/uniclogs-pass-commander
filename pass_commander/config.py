@@ -221,7 +221,7 @@ class Config:
         self.lat = _pop_angle(observer, 'lat', Real)
         self.lon = _pop_angle(observer, 'lon', Real)
         self.alt = _pop(observer, 'alt', int)
-        self.name = _pop(observer, 'name', str)
+        self.name = str(_pop(observer, 'name', str)) # XMLRPC can't handle toml subclass
 
         self.tle_cache = _pop_table(config, 'TleCache', {})
         # validate TLEs

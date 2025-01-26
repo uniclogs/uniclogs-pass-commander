@@ -70,6 +70,7 @@ class TestConfig:
         assert conf.lon == radians(good['Observer']['lon'])
         assert conf.alt == good['Observer']['alt']
         assert conf.name == good['Observer']['name']
+        assert type(conf.name) is str # Must be actual str, xmlrpc chokes on subclasses
         assert set(conf.tle_cache) == set(good['TleCache'])
 
         # satellite, owmid, edl_port, TleCache is optional
