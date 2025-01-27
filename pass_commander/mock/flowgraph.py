@@ -68,9 +68,9 @@ class Flowgraph:
 
     def set_morse_ident(self, val: str) -> None:
         self.morse_ident = val
-        logger.info("Morse bump %d", val)
+        logger.info("Morse ident %s:", val)
 
-    def get_morse_ident(self) -> int:
+    def get_morse_ident(self) -> str:
         return self.morse_ident
 
     def set_tx_selector(self, val: str) -> None:

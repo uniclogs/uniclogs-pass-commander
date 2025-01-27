@@ -29,7 +29,7 @@ class Station:
 
     def _command(self, verb: str) -> str:
         if re.match(
-            r"^(gettemp|((l-band|uhf) (pa-power|rf-ptt)|rotator) (on|off|status))$",
+            r"^(gettemp|((l-band|uhf) (pa-power|rf-ptt|lna)|rotator) (on|off|status))$",
             verb,
         ):
             logger.info("Sending command: %s", verb)
@@ -67,6 +67,30 @@ class Station:
 
     def ptt_off(self) -> str:
         return self._command(f"{self.band} rf-ptt off")
+
+    def lna_on(self) -> str:
+        # The LNA Relay is weird, it's not guaranteed to go on on the first try
+        # so it must be cycled. From Glenn in oresat-comms, 2024-09-05:
+        # Whereas there only needs to be a 100 ms pulse to switch the relay
+        # state, I am unsure of how fast the relay can go through multiple
+        # state changes. I would suggest as large as one second between
+        # commands just to be safe.
+        self._command(f"{self.band} lna on")
+        sleep(1)
+        self._command(f"{self.band} lna off")
+        sleep(1)
+        ret = self._command(f"{self.band} lna on")
+        sleep(1)
+        return ret
+
+    def lna_off(self) -> str:
+        self._command(f"{self.band} lna off")
+        sleep(1)
+        self._command(f"{self.band} lna on")
+        sleep(1)
+        ret = self._command(f"{self.band} lna off")
+        sleep(1)
+        return ret
 
     def gettemp(self) -> float:
         ret = self._command("gettemp")

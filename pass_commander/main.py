@@ -24,23 +24,24 @@ logger = logging.getLogger(__name__)
 
 
 class Main:
-    def __init__(
-        self,
-        tracker: Tracker,
-        rotator: Rotator,
-        radio: Radio,
-        station: Station,
-    ) -> None:
+    def __init__(self, conf: config.Config) -> None:
         '''Create the main pass coordinator.'''
-        self.track = tracker
-        self.rot = rotator
-        self.rad = radio
-        self.sta = station
         self.scheduler = BackgroundScheduler()
         self.scheduler.start()
-        self.nav: Navigator | None = None
 
         self.min_el = ephem.degrees(10.0)
+        self.track = Tracker(
+            (conf.lat, conf.lon, conf.alt),
+            sat_id=conf.sat_id,
+            local_only='con' in conf.mock,
+            tle_cache=conf.tle_cache,
+            owmid=conf.owmid,
+        )
+        self.rot = Rotator(None if 'con' in conf.mock else str(conf.rotator), cal=conf.cal)
+        self.rad = Radio(str(conf.radio), conf.radio_xmlrpc, conf.radio_edl, conf.name)
+        self.sta = Station(str(conf.station))
+        self.uhf = Station(str(conf.station), band='uhf')
+
         self.max_temp = 30.0
 
     def ntp_synchronized(self) -> bool:
@@ -115,15 +116,12 @@ class Main:
             sleep(1)
             return
         logger.info("Stopped moving")
+        self.uhf.lna_on()
         self.sta.pa_on()
-        logger.info("Station amps on")
-        sleep(0.2)
         self.sta.ptt_on()
-        logger.info("Station PTT on")
         self.rad.ident()
         logger.info("Sent Morse ident")
         self.sta.ptt_off()
-        logger.info("Station PTT off")
         logger.info("Waiting for bird to reach %d°el", self.min_el)
         while deg(self.track.azel().el) < self.min_el:
             sleep(0.1)
@@ -133,7 +131,6 @@ class Main:
         source.settimeout(0.5)
         logger.info("EDL socket open")
         self.sta.ptt_on()
-        logger.info("Station PTT on")
         while deg(self.track.azel().el) >= self.min_el:
             try:
                 packet = source.recv(4096)
@@ -148,7 +145,7 @@ class Main:
         self.rad.ident()
         logger.info("Sent Morse ident")
         self.sta.ptt_off()
-        logger.info("Station PTT off")
+        self.uhf.lna_on()
         self.rad.set_tx_gain(3)
         logger.info("Set TX gain to min")
         self.rot.park()
@@ -156,7 +153,6 @@ class Main:
         logger.info("Waiting for PA to cool")
         sleep(120)
         self.sta.pa_off()
-        logger.info("Station shutdown TX amp")
 
     def update_rotator(self, offset: ephem.Date) -> None:
         if self.nav is None:
@@ -194,36 +190,6 @@ class Main:
         while True:
             self.rad.ident()
             sleep(30)
-
-
-def start(action: str, conf: config.Config) -> None:
-    '''Start the actual pass-commander after arguments and config have been processed.'''
-    tracker = Tracker(
-        (conf.lat, conf.lon, conf.alt),
-        sat_id=conf.sat_id,
-        local_only='con' in conf.mock,
-        tle_cache=conf.tle_cache,
-        owmid=conf.owmid,
-    )
-    rotator = Rotator(None if 'con' in conf.mock else str(conf.rotator), cal=conf.cal)
-    radio = Radio(str(conf.radio), conf.radio_xmlrpc, conf.radio_edl, conf.name)
-    station = Station(str(conf.station))
-
-    commander = Main(tracker, rotator, radio, station)
-    if action == 'run':
-        commander.autorun(
-            tx_gain=conf.txgain,
-            count=conf.pass_count,
-            edl_port=conf.edl_port,
-        )
-    elif action == 'dryrun':
-        commander.dryrun()
-    elif action == 'doppler':
-        commander.test_doppler()
-    elif action == 'nextpass':
-        commander.track.sleep_until_next_pass()
-    else:
-        logger.info("Unknown action: %s", action)
 
 
 def handle_args() -> Namespace:  # noqa: D103
@@ -381,4 +347,19 @@ def main() -> None:  # noqa: D103 C901 PLR0912 PLR0915
             conf.station = IPv4Address("127.0.0.2")
             mock.Stationd(str(conf.station), 5005).start()
 
-        start(args.action, conf)
+        commander = Main(conf)
+
+        if args.action == 'run':
+            commander.autorun(
+                tx_gain=conf.txgain,
+                count=conf.pass_count,
+                edl_port=conf.edl_port,
+            )
+        elif args.action == 'dryrun':
+            commander.dryrun()
+        elif args.action == 'doppler':
+            commander.test_doppler()
+        elif args.action == 'nextpass':
+            commander.track.sleep_until_next_pass()
+        else:
+            logger.info("Unknown action: %s", args.action)
