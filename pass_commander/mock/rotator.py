@@ -62,3 +62,15 @@ class PtyRotator(ROT2ProgSim):  # type: ignore[misc]
             if str(e) != 'read failed: [Errno 5] Input/output error':
                 raise
         self._log.info("Stopped")
+
+
+if __name__ == '__main__':
+    from time import sleep
+
+    rot = PtyRotator(1)
+    print(rot.client_path)  # noqa: T201
+    try:
+        while True:
+            sleep(100)
+    finally:
+        rot.close()

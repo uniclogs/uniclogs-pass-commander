@@ -2,7 +2,6 @@ import numpy as np
 from skyfield.api import load
 from skyfield.units import Angle
 
-from pass_commander.config import AzEl
 from pass_commander.navigator import Backhand, Flip, Navigator, Straight
 from pass_commander.tracker import PassEvent, PassInfo
 
