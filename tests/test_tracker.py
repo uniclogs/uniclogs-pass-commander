@@ -1,21 +1,15 @@
-import ephem
+from datetime import timedelta
 
+from skyfield.api import E, N, wgs84
+
+from pass_commander.satellite import Satellite
 from pass_commander.tracker import Tracker
 
 
 class TestTracker:
-    def test_next_pass(self) -> None:
-        track = Tracker(
-            (ephem.degrees(45), ephem.degrees(-122), 50),
-            "OreSat0",
-            local_only=True,
-            tle_cache={
-                "OreSat0": [
-                    "ORESAT0",
-                    "1 52017U 22026K   24237.61773939  .00250196  00000+0  18531-2 0  9992",
-                    "2 52017  97.4861 255.7395 0002474 307.8296  52.2743 15.72168729136382",
-                ],
-            },
-        )
-        date = ephem.Date(45541.170401489704)  # start of a pass, determined through divination
-        track.next_pass_after(date)
+    def test_next_pass(self, sat: Satellite) -> None:
+        track = Tracker(wgs84.latlon(45.509054 * N, -122.681394 * E, 50))
+        np = track.next_pass(sat, after=sat.epoch)
+        assert np.rise.time < np.culm[0].time < np.fall.time
+        if np.fall.time - np.rise.time < (timedelta(hours=1) / timedelta(days=1)):
+            track.track(sat, np)

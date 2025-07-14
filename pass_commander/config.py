@@ -1,13 +1,14 @@
 from dataclasses import InitVar, dataclass, field
 from ipaddress import AddressValueError, IPv4Address
-from math import degrees, radians
 from numbers import Real
-from pathlib import Path
+from pathlib import Path, PosixPath
 from socket import gaierror, gethostbyname
 from typing import Any, NamedTuple, TypeAlias
 
-import ephem
 import tomlkit
+from sgp4 import earth_gravity, io
+from skyfield.api import E, N, wgs84
+from skyfield.toposlib import GeographicPosition
 from tomlkit.items import Table
 from tomlkit.toml_document import TOMLDocument
 
@@ -123,17 +124,6 @@ def _pop_ip(table: Table, key: str, valtype: type, default: Any = _marker) -> IP
         raise IpValidationError(table.display_name, key, value) from e
 
 
-def _pop_angle(table: Table, key: str, valtype: type, default: Any = _marker) -> ephem.Angle:  # noqa: ANN401
-    value = _pop(table, key, valtype, default)
-    try:
-        value = ephem.degrees(radians(value))
-    except (ValueError, TypeError) as e:
-        raise AngleValidationError(table.display_name, key, value) from e
-    if not radians(-180) < value < radians(180):
-        raise AngleValidationError(table.display_name, key, value)
-    return value
-
-
 def _check_template_text(config: TOMLDocument) -> None:
     '''Ensure all template text has been removed.'''
     for name, table in config.items():
@@ -151,20 +141,18 @@ class Config:
     # Main
     sat_id: str = ''
     owmid: str = ''
-    edl_port: int = 10025
+    edl: tuple[str, int] = ("", 10025)
     txgain: int = 2
 
     # Hosts
-    radio: IPv4Address = IPv4Address('127.0.0.1')
-    radio_edl: int = 10025
-    radio_xmlrpc: int = 10080
-    station: IPv4Address = IPv4Address('127.0.0.1')
-    rotator: IPv4Address = IPv4Address('127.0.0.1')
+    edl_dest: tuple[str, int] = ("127.0.0.1", 10025)
+    flowgraph: tuple[str, int] = ("127.0.0.1", 10080)
+    station: tuple[str, int] = ('127.0.0.1', 5005)
+    rotator: PosixPath = PosixPath('/dev/null')  # noqa: RUF009
 
     # Observer
-    lat: ephem.Angle = ephem.degrees(radians(45.509054))
-    lon: ephem.Angle = ephem.degrees(radians(-122.681394))
-    alt: int = 50
+    # lat, lon, alt TOML fields
+    observer: GeographicPosition = wgs84.latlon(45.509054 * N, -122.681394 * E, 50)
     name: str = ''
     cal: AzEl = AzEl(0, 0)
     slew: AzEl | None = None
@@ -207,28 +195,39 @@ class Config:
         _check_template_text(config)
 
         main = _pop_table(config, 'Main')
-        self.sat_id = _pop(main, 'satellite', str, self.sat_id)
-        self.owmid = _pop(main, 'owmid', str, self.owmid)
-        self.edl_port = _pop(main, 'edl_port', int, self.edl_port)
-        self.txgain = _pop(main, 'txgain', int)
+        self.sat_id = str(_pop(main, 'satellite', str, self.sat_id))
+        self.owmid = str(_pop(main, 'owmid', str, self.owmid))
+        self.edl = ("", int(_pop(main, 'edl_port', int, self.edl[1])))
+        self.txgain = int(_pop(main, 'txgain', int))
 
         hosts = _pop_table(config, 'Hosts')
-        self.radio = _pop_ip(hosts, 'radio', str)
-        self.station = _pop_ip(hosts, 'station', str)
-        self.rotator = _pop_ip(hosts, 'rotator', str)
+        radio = _pop_ip(hosts, 'radio', str)
+        station = _pop_ip(hosts, 'station', str)
+        self.edl_dest = (str(radio), self.edl_dest[1])
+        self.flowgraph = (str(radio), self.flowgraph[1])
+        self.station = (str(station), self.station[1])
+        self.rotator = PosixPath(_pop(hosts, 'rotator', str))
 
         observer = _pop_table(config, 'Observer')
-        self.lat = _pop_angle(observer, 'lat', Real)
-        self.lon = _pop_angle(observer, 'lon', Real)
-        self.alt = _pop(observer, 'alt', int)
-        self.name = str(_pop(observer, 'name', str)) # XMLRPC can't handle toml subclass
+        self.observer = wgs84.latlon(
+            _pop(observer, 'lat', Real) * N,
+            _pop(observer, 'lon', Real) * E,
+            _pop(observer, 'alt', int),
+        )
+        if not -90 <= self.observer.latitude.degrees <= 90:
+            raise AngleValidationError(observer.display_name, 'lat', self.observer.latitude.degrees)
+        if not -180 <= self.observer.longitude.degrees <= 180:
+            raise AngleValidationError(
+                observer.display_name, 'lon', self.observer.longitude.degrees
+            )
+        self.name = str(_pop(observer, 'name', str))  # XMLRPC can't handle toml subclass
 
-        self.tle_cache = _pop_table(config, 'TleCache', {})
+        self.tle_cache = dict(_pop_table(config, 'TleCache', {}))
         # validate TLEs
         for key, tle in self.tle_cache.items():
             try:
-                ephem.readtle(*tle)
-            except (TypeError, ValueError) as e:  # noqa: PERF203
+                io.twoline2rv(tle[1], tle[2], earth_gravity.wgs84)
+            except (IndexError, ValueError) as e:
                 raise TleValidationError(key, tle) from e
 
         # Ensure there's no extra keys
@@ -248,20 +247,20 @@ class Config:
         main = tomlkit.table()
         main.add(tomlkit.comment('satellite = "<Index to TleCache, Gpredict, or NORAD ID>"'))
         main.add(tomlkit.comment('owmid = "<OpenWeatherMap API key>"'))
-        main['edl_port'] = cls.edl_port
+        main['edl_port'] = cls.edl[1]
         main['txgain'] = cls.txgain
 
         hosts = tomlkit.table()
-        hosts['radio'] = str(cls.radio)
+        hosts['radio'] = str(cls.flowgraph[0])
         hosts['station'] = str(cls.station)
         hosts['rotator'] = str(cls.rotator)
 
         observer = tomlkit.table()
         observer.add(tomlkit.comment("Change lat, lon, and alt to your specific station."))
         observer.add(tomlkit.comment("These values are for the Portland evb1 station"))
-        observer['lat'] = degrees(cls.lat)
-        observer['lon'] = degrees(cls.lon)
-        observer['alt'] = cls.alt
+        observer['lat'] = cls.observer.latitude.degrees
+        observer['lon'] = cls.observer.longitude.degrees
+        observer['alt'] = int(cls.observer.elevation.m)
         observer['name'] = '<station name or callsign>'
 
         config['Main'] = main

@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 class Station:
-    def __init__(self, host: str, station_port: int = 5005, band: str = "l-band") -> None:
+    def __init__(self, addr: tuple[str, int], band: str = "l-band", lna_delay: float = 1.0) -> None:
         '''Python binding for uniclogs-stationd.
 
         Yes stationd is written in python but it only exposes a socket interface. Except also
@@ -15,17 +15,19 @@ class Station:
 
         Parameters
         ----------
-        host
-            IP address of the stationd instance.
-        station_port
-            Port that the stationd instance is listening on.
+        addr
+            IP address and port of the stationd instance.
         band
             One of `l-band` or `uhf`. We need separate instances to control the radios for each
             band.
+        lna_delay
+            Time in seconds to wait after toggling the LNA relay. The lna_{on,off} methods toggle
+            the relay three times so they'll take 3 * lna_delay seconds.
         '''
         self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.s.connect((host, station_port))
+        self.s.connect(addr)
         self.band = band
+        self.lna_delay = lna_delay
 
     def _command(self, verb: str) -> str:
         if re.match(
@@ -35,8 +37,7 @@ class Station:
             logger.info("Sending command: %s", verb)
             self.s.send(verb.encode())
             return self._response()
-        logger.warning("invalid command: %s", verb)
-        return ''
+        raise ValueError(f"invalid command: {verb}")
 
     def _response(self) -> str:
         data = self.s.recv(4096)
@@ -76,20 +77,20 @@ class Station:
         # state changes. I would suggest as large as one second between
         # commands just to be safe.
         self._command(f"{self.band} lna on")
-        sleep(1)
+        sleep(self.lna_delay)
         self._command(f"{self.band} lna off")
-        sleep(1)
+        sleep(self.lna_delay)
         ret = self._command(f"{self.band} lna on")
-        sleep(1)
+        sleep(self.lna_delay)
         return ret
 
     def lna_off(self) -> str:
         self._command(f"{self.band} lna off")
-        sleep(1)
+        sleep(self.lna_delay)
         self._command(f"{self.band} lna on")
-        sleep(1)
+        sleep(self.lna_delay)
         ret = self._command(f"{self.band} lna off")
-        sleep(1)
+        sleep(self.lna_delay)
         return ret
 
     def gettemp(self) -> float:

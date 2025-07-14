@@ -4,17 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pass-commander"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = {text = "GPL-3.0"}
 dynamic = ["version"]
 
 dependencies = [
-    "APScheduler >= 3.9.1",
     "jeepney >= 0.8.0",
-    "pyephem >= 9.99",
+    "linuxfd >= 1.5",
+    "pyserial >= 3.5",
     "requests >= 2.32.0",
-    "ephem >= 4.1.4",
+    "rot2prog >= 0.0.9",
     "tomlkit >= 0.13.2",
+    "sgp4 >= 2.23",
+    "skyfield >= 1.51",
 ]
 
 [project.optional-dependencies]
@@ -23,6 +25,7 @@ dev = [
     "mypy >= 0.942",
     "pytest >= 8.3.3",
     "types-requests >= 2.25",
+    "responses >= 0.25.6",
     "ruff >= 0.8.0",
 ]
 
@@ -42,8 +45,8 @@ quote-style = "preserve"
 select = ["ALL"]
 ignore = [
     # See https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules
-    "Q000",  # bad-quotes-multiline-string
-    "Q002",  # bad-quotes-docstringa
+    "Q000",  # bad-quotes-inline-string
+    "Q002",  # bad-quotes-docstring
     "D300",  # triple-single-quotes
     "COM812",  # prohibited-trailing-comma
     "ISC001",  # single-line-implicit-string-concatenation
@@ -51,6 +54,8 @@ ignore = [
     "D100",  # undocumented-public-module
     "D101",  # undocumented-public-class
     "D102",  # undocumented-public-method
+    # might leave off always. Does the user need to know __str__ makes a str?
+    "D105",  # undocumented-magic-method
     # D203, and D213 conflict with D211 and D212, prefer the latter which
     # follow PEP257
     "D203",  # one-blank-line-before-class
@@ -70,6 +75,9 @@ ignore = [
     "D413",  # blank-line-after-last-section
     # This might be good to turn on later, right now I'm on the fence about it
     "TRY003",  # raise-vanilla-args
+    # Another one that might be good later but for now is too argessive. Many of
+    # the numbers it flags are obvious from context.
+    "PLR2004",  # magic value used in comparison
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -90,7 +98,8 @@ ignore = [
 # Remove this line when resolved.
 extend-immutable-calls = [
     "pass_commander.config.AzEl",  # a tuple, immutable
-    "ephem.degrees",  # This is hashable so probably immutable
+    # This produces a GeographiPosition which is hashable so probably immutable
+    "skyfield.api.wgs84.latlon",
     "ipaddress.IPv4Address",  # hashable
 ]
 

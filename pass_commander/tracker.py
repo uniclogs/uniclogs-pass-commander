@@ -1,46 +1,46 @@
 from __future__ import annotations
 
 import logging
-import re
+from copy import deepcopy
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from math import degrees as deg
-from pathlib import Path
-from time import sleep
+from typing import TYPE_CHECKING, NamedTuple
 
-import ephem
 import requests
+from skyfield.api import Time, load
+from skyfield.units import Angle, Velocity
 
-from .config import AzEl, TleCache
+if TYPE_CHECKING:
+    from skyfield.toposlib import GeographicPosition
+
+    from .satellite import Satellite
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
+class PassEvent(NamedTuple):
+    time: Time
+    az: Angle
+    el: Angle
+
+
+# While skyfield is capable of array math the interesting events in a pass
+# are of low numbers and clarity is more important
+# FIXME: could this just be Navigator?
+# FIXME: should it know of ts so I can say time_to_rise() -> timedelta
+@dataclass
 class PassInfo:
-    '''See https://rhodesmill.org/pyephem/quick.html#transit-rising-and-setting next_pass().
-
-    This turns the returned tuple into something with names, and adds the maximum_altitude_azimuth
-    field to record the asimuth at maximum_altitude.
-    '''
-
-    rise_time: ephem.Date
-    rise_azimuth: ephem.Angle
-    maximum_altitude_time: ephem.Date
-    maximum_altitude: ephem.Angle
-    set_time: ephem.Date
-    set_azimuth: ephem.Angle
-    maximum_altitude_azimuth: ephem.Angle
+    rise: PassEvent
+    culm: list[PassEvent]
+    fall: PassEvent
 
 
 class Tracker:
     def __init__(
         self,
-        observer: tuple[ephem.Angle, ephem.Angle, int],
-        sat_id: str,
+        observer: GeographicPosition,
         *,
-        local_only: bool = False,
-        tle_cache: TleCache | None = None,
         owmid: str = '',
     ) -> None:
         '''Tracks a satellite relative to a given observer.
@@ -51,140 +51,137 @@ class Tracker:
         Parameters
         ----------
         observer
-            The (latitude, longitude, altitude) of the observer.
-        sat_id
-            The ID of the satellite, either as an International Designator, a NORAD Satellite
-            Catalog number, or Catalog satellite name.
-        local_only
-            If true, do not attempt to the internet for TLE lookup, only tle_cache or Gpredict.
-        tle_cache
-            A local cache of TLEs for lookup.
+            The latitude, longitude, and altitude of the observer.
         owmid
             Open Weather Map API key, or empty string for none.
         '''
-        self.sat_id = sat_id
-        self.local_only = local_only
-        self.tle_cache = tle_cache
         self.owmid = owmid
-        m = re.match(r"(?:20)?(\d\d)-?(\d{3}[A-Z])$", self.sat_id.upper())
-        if m:
-            year, launch = m.groups()
-            self.sat_id = f"20{year}-{launch}"
-            self.query = "INTDES"
-        elif re.match(r"\d{5}$", self.sat_id):
-            self.query = "CATNR"
-        else:
-            self.query = "NAME"
-        self.obs = ephem.Observer()
-        (self.obs.lat, self.obs.lon, self.obs.elev) = observer
-        self.sat = ephem.readtle(*self.fetch_tle())
+        self.obs = observer
+        self.ts = load.timescale()
 
-    def fetch_tle(self) -> list[str]:
-        if self.local_only and self.tle_cache and self.sat_id in self.tle_cache:
-            logger.info("using cached TLE")
-            tle = self.tle_cache[self.sat_id]
-        elif self.local_only and self.query == "CATNR":
-            fname = Path.home() / '.config/Gpredict/satdata{self.sat_id}.sat'
-            if fname.is_file():
-                logger.info("using Gpredict's cached TLE")
-                with fname.open(encoding="ascii") as file:
-                    lines = file.readlines()[3:6]
-                    tle = [line.rstrip().split("=")[1] for line in lines]
-        elif self.local_only:
-            logger.info("No matching TLE is available locally")
-        else:
-            tle = requests.get(
-                f"https://celestrak.org/NORAD/elements/gp.php?{self.query}={self.sat_id}",
-                timeout=10,
-            ).text.splitlines()
-            if tle[0] == "No GP data found":
-                if self.tle_cache and self.sat_id in self.tle_cache:
-                    logger.info("No results for %s at celestrak, using cached TLE", self.sat_id)
-                    tle = self.tle_cache[self.sat_id]
-                else:
-                    raise ValueError(f"Invalid satellite identifier: {self.sat_id}")
-        logger.info("\n".join(tle))
-        return tle
+    def _build_passinfo(self, sat: Satellite, times: list[Time]) -> PassInfo:
+        events = []
+        for t in times:
+            # Not compensating for temperature/pressure because the culm could be well in the future
+            # Recomputed later accounting for them in track()
+            el, az, _ = (sat - self.obs).at(t).altaz()
+            events.append(PassEvent(t, az, el))
+        return PassInfo(events[0], events[1:-1], events[-1])
 
-    def calibrate(self) -> None:
+    # FIXME: filtering by time of day
+    def next_pass(  # noqa: C901
+        self,
+        sat: Satellite,
+        after: Time | None = None,
+        min_el: Angle | None = None,
+        lookahead: timedelta = timedelta(days=3),
+    ) -> PassInfo | None:
+        if after is None:
+            after = self.ts.now()
+
+        if min_el is None:
+            min_el = Angle(degrees=15)
+
+        # Find all passes above 0°. find_evends() does have an elevation argument but that returns
+        # times at the given elevation and we want the times where it crosses the horizon, 0°.
+        times, events = sat.find_events(self.obs, after, after + lookahead)
+        if not times:
+            logger.error("No pass found in the next %d", lookahead)
+            logger.info("The TLE or station location is fishy.")
+            return None
+
+        # Events are the following integers
+        RISE = 0  # Satellite rises above 0° # noqa: N806
+        CULM = 1  # Satellite is at an elevation local maxima # noqa: N806, F841
+        FALL = 2  # Satellite falls below 0° # noqa: N806
+
+        # Split the times list by pass, which is [RISE, one or more CULM, FALL], but we may be in a
+        # pass so pre-fill the missing parts for the first entry.
+        passes = []
+        singlepass = []
+        # `after` may be during a pass so we don't have an initial RISE/CULM
+        if events[0] != RISE:
+            # Some time during a pass
+            singlepass.append(after)
+        if events[0] == FALL:
+            # Past the final culmination so `after` is the max elevation
+            singlepass.append(after)
+
+        for t, e in zip(times, events, strict=True):
+            singlepass.append(t)
+            if e == FALL:
+                passes.append(singlepass)
+                singlepass = []
+
+        # The pass may end after the lookahead time, so trucate. Either the orbit is unusual,
+        # like a geosynchronous orbit, or the user should wait and recompute with the next
+        # avaliable TLE
+        # FIXME: this is kind of unsatisfactory, the user may have to recompute during a pass.
+        # Is there a better way of handling this?
+        if events[-1] == RISE:
+            singlepass.append(after + lookahead)
+        if events[-1] != FALL:
+            singlepass.append(after + lookahead)
+            passes.append(singlepass)
+            # FIXME: log.warn on trucation, but only if it's the only pass and only if
+            # it's above min_el
+
+        # Find the next pass with culmination greater than min_el
+        for singlepass in passes:
+            info = self._build_passinfo(sat, singlepass)
+            for culm in info.culm:
+                if culm.el.radians >= min_el.radians:
+                    return info
+
+        logger.warning(
+            "No passes for %s in the next %s with elevation >=%.1f°",
+            sat.name,
+            lookahead,
+            min_el.degrees,
+        )
+        return None
+
+    def weather(self) -> tuple[float, float]:
         if not self.owmid:
             # From the ephem docs, temperature defaults to 25 C, pressure defaults to 1010 mBar
             logger.info("not fetching weather for calibration")
-            return
+            return (25.0, 1010.0)
+        # See https://openweathermap.org/api/one-call-3
+        # FIXME: Rate limit 1 per mintue/1000 per day
         r = requests.get(
-            f"https://api.openweathermap.org/data/3.0/onecall?lat={deg(self.obs.lat):.3f}&lon="
-            f"{deg(self.obs.lon):.3f}&exclude=minutely,hourly,daily,alerts&units=metric&appid="
-            f"{self.owmid}",
+            'https://api.openweathermap.org/data/3.0/onecall',
+            params={
+                'lat': f'{deg(self.obs.lat):.3f}',
+                'lon': f'{deg(self.obs.lon):.3f}',
+                'exclude': 'minutely,hourly,daily,alerts',
+                'units': 'metric',
+                'appid': self.owmid,
+            },
             timeout=10,
         )
+        r.raise_for_status()
         c = r.json()["current"]
-        self.obs.temp = c["temp"]
-        self.obs.pressure = c["pressure"]
+        return (c['temp'], c['pressure'])
 
-    def now(self) -> ephem.Date:
-        '''ephem.now() does not provide subsecond precision, use this instead.'''
-        return ephem.Date(datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f"))
+    def track(
+        self, sat: Satellite, singlepass: PassInfo, temp: float = 25.0, pressure: float = 1010.0
+    ) -> tuple[tuple[Time, Angle, Angle], tuple[Time, Velocity]]:
+        """Create a track of a given satellite relative to the set observer.
 
-    def freshen(self, date: ephem.Date | None = None) -> Tracker:
-        """Perform a new calculation of satellite relative to observer."""
-        self.obs.date = date or self.now()
-        self.sat.compute(self.obs)
-        return self
-
-    def azel(self) -> AzEl:
-        """Return the current track azimuth and elevation in radians."""
-        return AzEl(self.sat.az, self.sat.alt)
-
-    @property
-    def doppler(self) -> float:
-        """Returns the unitless value to scale frequencies for doppler shift.
-
-        Note that as the satellite is approaching the observer the value is negative, and as it's
+        Note that as the satellite is approaching the observer the rangevel is negative, and as it's
         moving away the value is positive.
         """
-        # both values should be float but ephem lacks type annotations.
-        return float(self.sat.range_velocity / ephem.c)
+        rise = singlepass.rise.time
+        fall = singlepass.fall.time
 
-    def next_pass_after(self, date: ephem.Date, *, singlepass: bool = True) -> PassInfo:
-        self.obs.date = date
-        info = self.obs.next_pass(self.sat, singlepass)
+        pass_duration_seconds = (fall - rise) * 24 * 60 * 60
+        passtimes = self.ts.linspace(rise, fall, int(pass_duration_seconds * 2))
+        positions = (sat - self.obs).at(passtimes)
 
-        self.obs.date = info[2]  # max el time
-        self.sat.compute(self.obs)
-
-        return PassInfo(info[0], info[1], info[2], info[3], info[4], info[5], self.sat.az)
-
-    def get_next_pass(self, min_el: float = 15.0, max_lookahead: int = 100) -> PassInfo:
-        np = self.next_pass_after(ephem.now())
-        fails = 0
-        while deg(np.maximum_altitude) < min_el and fails < max_lookahead:
-            fails += 1
-            np = self.next_pass_after(np.set_time)
-        if fails >= max_lookahead:
-            logger.info(
-                "The TLE or station location is fishy. Unable to find a pass with elevation >%f°",
-                min_el,
-            )
-        return np
-
-    def sleep_until_next_pass(self, min_el: float = 15.0) -> PassInfo:
-        np = self.next_pass_after(ephem.now(), singlepass=False)
-        if np.rise_time > np.set_time and self.obs.date < np.maximum_altitude_time:
-            # FIXME we could use np.maximum_altitude_time instead of np.set_time to see if we are
-            # in the first half of the pass
-            logger.info("In a pass now!")
-            return self.next_pass_after(ephem.Date(self.obs.date - (30 * ephem.minute)))
-        np = self.next_pass_after(ephem.now())
-        while deg(np.maximum_altitude) < min_el:
-            np = self.next_pass_after(np.set_time)
-        seconds = (np.rise_time - ephem.now()) / ephem.second
-        logger.info(
-            "Sleeping %s until next rise time %s for a %.2f°el pass.",
-            timedelta(seconds=seconds),
-            ephem.localtime(np.rise_time),
-            deg(np.maximum_altitude),
-        )
-        sleep(seconds)
-        if ephem.now() - self.sat.epoch > 1:
-            self.sat = ephem.readtle(*self.fetch_tle())
-        return np
+        el, az, _ = positions.altaz(temperature_C=temp, pressure_mbar=pressure)
+        rangevel = positions.frame_latlon_and_rates(self.obs)[-1]
+        # FIXME: separate functions for azel/rangevel?
+        # Ideally the radio and the rotator should figure out the timesteps they need
+        # Really they should have uniform steps in their required values and time should
+        # be the variable but that's not the expected way - hard to do.
+        return ((passtimes, az, el), (deepcopy(passtimes), rangevel))

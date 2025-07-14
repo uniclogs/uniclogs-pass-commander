@@ -1,33 +1,20 @@
-from pass_commander.mock import Stationd
+from contextlib import closing
+
+from pass_commander.mock.station import Stationd
 from pass_commander.station import Station
 
 
 class TestStation:
-    def test_pa(self) -> None:
-        addr = ("127.0.0.2", 5006)
-        Stationd(*addr).start()
-        station = Station(*addr)
+    def test_pa(self, stationd: Stationd) -> None:
+        with closing(Station(stationd)) as s:
+            s.pa_on()
+            s.pa_off()
 
-        station.pa_on()
-        station.pa_off()
+    def test_ptt(self, stationd: Stationd) -> None:
+        with closing(Station(stationd)) as s:
+            s.ptt_on()
+            s.ptt_off()
 
-        station.close()
-
-    def test_ptt(self) -> None:
-        addr = ("127.0.0.2", 5007)
-        Stationd(*addr).start()
-        station = Station(*addr)
-
-        station.ptt_on()
-        station.ptt_off()
-
-        station.close()
-
-    def test_getttemp(self) -> None:
-        addr = ("127.0.0.2", 5008)
-        Stationd(*addr).start()
-        station = Station(*addr)
-
-        station.gettemp()
-
-        station.close()
+    def test_getttemp(self, stationd: Stationd) -> None:
+        with closing(Station(stationd)) as s:
+            s.gettemp()

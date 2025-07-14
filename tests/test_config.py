@@ -1,5 +1,5 @@
-from ipaddress import IPv4Address
-from math import radians
+import dataclasses
+import typing
 from pathlib import Path
 from socket import gethostbyname
 
@@ -12,76 +12,44 @@ from pass_commander.config import Config
 
 
 class TestConfig:
-    @staticmethod
-    def good_config() -> TOMLDocument:
-        cfg = tomlkit.document()
-
-        main = tomlkit.table()
-        main['satellite'] = "fake-sat"
-        main['owmid'] = "fake-id"
-        main['edl_port'] = 12345
-        main['txgain'] = 47
-
-        hosts = tomlkit.table()
-        hosts['radio'] = "localhost"
-        hosts['station'] = "127.0.0.1"
-        hosts['rotator'] = "127.0.0.2"
-
-        observer = tomlkit.table()
-        observer['lat'] = 45.509054
-        observer['lon'] = -122.681394
-        observer['alt'] = 500
-        observer['name'] = 'not-real'
-
-        cfg['Main'] = main
-        cfg['Hosts'] = hosts
-        cfg['Observer'] = observer
-
-        cfg['TleCache'] = {
-            'OreSat0': [
-                "ORESAT0",
-                "1 52017U 22026K   23092.57919752  .00024279  00000+0  10547-2 0  9990",
-                "2 52017  97.5109  94.8899 0023022 355.7525   4.3512 15.22051679 58035",
-            ],
-            '2022-026K': [
-                "ORESAT0",
-                "1 52017U 22026K   23092.57919752  .00024279  00000+0  10547-2 0  9990",
-                "2 52017  97.5109  94.8899 0023022 355.7525   4.3512 15.22051679 58035",
-            ],
-        }
-
-        return cfg
-
-    def test_valid(self, tmp_path: Path) -> None:
+    def test_valid(self, tmp_path: Path, good_toml: TOMLDocument) -> None:
         path = tmp_path / 'valid.toml'
-        good = self.good_config()
         with path.open('w+') as f:
-            tomlkit.dump(good, f)
+            tomlkit.dump(good_toml, f)
             f.flush()
         conf = Config(path)
-        assert conf.sat_id == good['Main']['satellite']
-        assert conf.owmid == good['Main']['owmid']
-        assert conf.edl_port == good['Main']['edl_port']
-        assert conf.txgain == good['Main']['txgain']
-        assert conf.radio == IPv4Address(gethostbyname(good['Hosts']["radio"]))
-        assert conf.station == IPv4Address(gethostbyname(good['Hosts']['station']))
-        assert conf.rotator == IPv4Address(gethostbyname(good['Hosts']['rotator']))
-        assert conf.lat == radians(good['Observer']['lat'])
-        assert conf.lon == radians(good['Observer']['lon'])
-        assert conf.alt == good['Observer']['alt']
-        assert conf.name == good['Observer']['name']
-        assert type(conf.name) is str # Must be actual str, xmlrpc chokes on subclasses
-        assert set(conf.tle_cache) == set(good['TleCache'])
+        assert conf.sat_id == good_toml['Main']['satellite']
+        assert conf.owmid == good_toml['Main']['owmid']
+        assert conf.edl == ("", good_toml['Main']['edl_port'])
+        assert conf.txgain == good_toml['Main']['txgain']
+        assert conf.edl_dest == (gethostbyname(good_toml['Hosts']["radio"]), Config.edl_dest[1])
+        assert conf.flowgraph == (gethostbyname(good_toml['Hosts']["radio"]), Config.flowgraph[1])
+        assert conf.station == (gethostbyname(good_toml['Hosts']['station']), Config.station[1])
+        assert conf.rotator == Path(good_toml['Hosts']['rotator'])
+        assert conf.observer.latitude.degrees == good_toml['Observer']['lat']
+        assert conf.observer.longitude.degrees == good_toml['Observer']['lon']
+        assert conf.observer.elevation.m == good_toml['Observer']['alt']
+        assert conf.name == good_toml['Observer']['name']
+        for field in dataclasses.fields(conf):
+            # The toml string class, a subclass of str, was leaking through conf
+            # but xmlrpc can only handle actual str. We might as well sanitize all
+            # the other fields too.
+            assert type(getattr(conf, field.name)) in (
+                # run time type checking is kinda hard, it's gotta be one of these right?
+                field.type,
+                typing.get_origin(field.type),
+                *typing.get_args(field.type),
+            )
+        assert set(conf.tle_cache) == set(good_toml['TleCache'])
 
         # satellite, owmid, edl_port, TleCache is optional
-        cfg = self.good_config()
-        del cfg['Main']['satellite']
-        del cfg['Main']['owmid']
-        del cfg['Main']['edl_port']
-        del cfg['TleCache']
+        del good_toml['Main']['satellite']
+        del good_toml['Main']['owmid']
+        del good_toml['Main']['edl_port']
+        del good_toml['TleCache']
         path = tmp_path / 'optional.toml'
         with path.open('w+') as f:
-            tomlkit.dump(cfg, f)
+            tomlkit.dump(good_toml, f)
             f.flush()
         Config(path)
 
@@ -97,98 +65,96 @@ class TestConfig:
         with pytest.raises(config.InvalidTomlError):
             Config(path)
 
-    def test_extra_fields(self, tmp_path: Path) -> None:
-        cases = [self.good_config() for _ in range(5)]
-        cases[0]['Main']['fake'] = "foo"
-        cases[1]['Hosts']['fake'] = "foo"
-        cases[2]['Observer']['fake'] = "foo"
-        cases[3]['Fake'] = tomlkit.table()
-        cases[4]['Fake'] = 3
+    @pytest.mark.parametrize(
+        'entry',
+        [
+            ('Main', 'fake', 'foo'),
+            ('Hosts', 'fake', 'foo'),
+            ('Observer', 'fake', 'foo'),
+            ('Fake', tomlkit.table()),
+            ('Fake', 3),
+        ],
+    )
+    def test_extra_fields(self, tmp_path: Path, good_toml: TOMLDocument, entry: tuple) -> None:
+        if len(entry) == 2:
+            good_toml[entry[0]] = entry[1]
+        elif len(entry) == 3:
+            good_toml[entry[0]][entry[1]] = entry[2]
+        else:
+            raise TypeError
 
-        for i, conf in enumerate(cases):
-            path = tmp_path / f'case{i}.toml'
-            with path.open('w+') as f:
-                tomlkit.dump(conf, f)
-                f.flush()
-            with pytest.raises(config.UnknownKeyError):
-                Config(path)
+        path = tmp_path / 'extra_field.toml'
+        with path.open('w+') as f:
+            tomlkit.dump(good_toml, f)
+            f.flush()
+        with pytest.raises(config.UnknownKeyError):
+            Config(path)
 
-    def test_invalid_ip(self, tmp_path: Path) -> None:
-        conf = self.good_config()
-        conf['Hosts']['radio'] = 'not an ip'
+    def test_invalid_ip(self, tmp_path: Path, good_toml: TOMLDocument) -> None:
+        good_toml['Hosts']['radio'] = 'not an ip'
         path = tmp_path / 'ip.toml'
         with path.open('w+') as f:
-            tomlkit.dump(conf, f)
+            tomlkit.dump(good_toml, f)
             f.flush()
         with pytest.raises(config.IpValidationError):
             Config(path)
 
-    def test_integer_lat_lon(self, tmp_path: Path) -> None:
-        conf = self.good_config()
-        conf['Observer']['lat'] = 45
-        conf['Observer']['lat'] = -122
+    def test_integer_lat_lon(self, tmp_path: Path, good_toml: TOMLDocument) -> None:
+        good_toml['Observer']['lat'] = 45
+        good_toml['Observer']['lon'] = -122
         path = tmp_path / "intlatlon.toml"
         with path.open('w+') as f:
-            tomlkit.dump(conf, f)
+            tomlkit.dump(good_toml, f)
             f.flush()
         out = Config(path)
-        assert out.lat == radians(conf['Observer']['lat'])
-        assert out.lon == radians(conf['Observer']['lon'])
+        assert out.observer.latitude.degrees == good_toml['Observer']['lat']
+        assert out.observer.longitude.degrees == good_toml['Observer']['lon']
 
-    def test_invalid_lat_lon(self, tmp_path: Path) -> None:
-        cases = [self.good_config() for _ in range(4)]
-        cases[0]['Observer']['lat'] = 270.4
-        cases[1]['Observer']['lat'] = -270.9
-        cases[2]['Observer']['lon'] = 270.7
-        cases[3]['Observer']['lon'] = -270.2
-        for i, conf in enumerate(cases):
-            path = tmp_path / f"case{i}.toml"
-            with path.open('w+') as f:
-                tomlkit.dump(conf, f)
-                f.flush()
-            with pytest.raises(config.AngleValidationError):
-                Config(path)
+    @pytest.mark.parametrize(
+        'latlon',
+        [
+            ('lat', 91.4),
+            ('lat', -91.9),
+            ('lon', 181.7),
+            ('lon', -181.2),
+        ],
+    )
+    def test_invalid_lat_lon(self, tmp_path: Path, good_toml: TOMLDocument, latlon: tuple) -> None:
+        good_toml['Observer'][latlon[0]] = latlon[1]
 
-    def test_invalid_tle(self, tmp_path: Path) -> None:
-        # Missing lines TypeError
-        conf = self.good_config()
-        del conf['TleCache']['OreSat0'][2]
+        path = tmp_path / "latlon.toml"
+        with path.open('w+') as f:
+            tomlkit.dump(good_toml, f)
+            f.flush()
+        with pytest.raises(config.AngleValidationError):
+            Config(path)
+
+    def test_invalid_tle_missing(self, tmp_path: Path, good_toml: TOMLDocument) -> None:
+        del good_toml['TleCache']['OreSat0'][2]
         path = tmp_path / "missing.toml"
         with path.open('w+') as f:
-            tomlkit.dump(conf, f)
+            tomlkit.dump(good_toml, f)
             f.flush()
         with pytest.raises(config.TleValidationError) as e:
             Config(path)
-        assert isinstance(e.value.__cause__, TypeError)
+        assert isinstance(e.value.__cause__, IndexError)
 
-        # Invalid lines ValueError
-        conf = self.good_config()
-        conf['TleCache']['OreSat0'][1] = "1 52017U 22026K   23092.5791975"
+    def test_invalid_tle_value(self, tmp_path: Path, good_toml: TOMLDocument) -> None:
+        good_toml['TleCache']['OreSat0'][1] = "1 52017U 22026K   23092.5791975"
         path = tmp_path / "invalid.toml"
         with path.open('w+') as f:
-            tomlkit.dump(conf, f)
+            tomlkit.dump(good_toml, f)
             f.flush()
         with pytest.raises(config.TleValidationError) as e:
             Config(path)
         assert isinstance(e.value.__cause__, ValueError)
 
-    def test_edl(self, tmp_path: Path) -> None:
-        # String
-        conf = self.good_config()
-        conf['Main']['edl_port'] = "12345"
-        path = tmp_path / "string.toml"
+    @pytest.mark.parametrize('edlport', ["12345", 1.2345])
+    def test_edl(self, tmp_path: Path, good_toml: TOMLDocument, edlport: str | float) -> None:
+        good_toml['Main']['edl_port'] = edlport
+        path = tmp_path / "edlport.toml"
         with path.open('w+') as f:
-            tomlkit.dump(conf, f)
-            f.flush()
-        with pytest.raises(config.KeyValidationError):
-            Config(path)
-
-        # Float
-        conf = self.good_config()
-        conf['Main']['edl_port'] = 1.2345
-        path = tmp_path / "float.toml"
-        with path.open('w+') as f:
-            tomlkit.dump(conf, f)
+            tomlkit.dump(good_toml, f)
             f.flush()
         with pytest.raises(config.KeyValidationError):
             Config(path)
