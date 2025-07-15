@@ -70,9 +70,10 @@ class Navigator(metaclass=ABCMeta):
 
         z = (abs(rise - culm) + abs(culm - fall)) > (1.5 * pi)
         return ''.join(
-            f"rise:{rise_time} rise:{deg(rise):.3f}°az maxel:{culm_time}"
-            f" max:{self.info.culm[0].el.degrees:.3f}°el set:{fall_time} set:{deg(fall):.3f}°az\n"
-            f"Zero_cross:{z} mode:{self.__class__.__name__} start:{self.info.rise.time}",
+            f"rise: {rise_time} {deg(rise):.1f}°az\n"
+            f"culm: {culm_time} {deg(culm):.1f}°el\n"
+            f"fall: {fall_time} {deg(fall):.1f}°az\n"
+            f"Zero_cross: {z} mode: {self.__class__.__name__}",
         )
 
     @staticmethod
@@ -131,5 +132,5 @@ class Flip(Navigator):
 
     def __str__(self) -> str:
         val = super().__str__()
-        val += f"Flip at {deg(self.flip_az.degrees):.3f}"
+        val += f" at {self.flip_az.degrees:.1f}°az"
         return val

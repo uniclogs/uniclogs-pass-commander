@@ -58,16 +58,20 @@ class Radio:
         return float(1 - range_velocity / constants.C) * self.rxfreq
 
     def set_rx_frequency(self, range_velocity: float) -> None:
+        freq = self.rx_frequency(range_velocity)
+        logger.info("Set RX frequency %.1f", freq)
         with self._lock:
-            self._flowgraph.set_gpredict_rx_frequency(self.rx_frequency(range_velocity))
+            self._flowgraph.set_gpredict_rx_frequency(freq)
 
     def tx_frequency(self, range_velocity: float) -> float:
         # TX is the opposite of RX, starts low, goes high
         return float(1 + range_velocity / constants.C) * self.txfreq
 
     def set_tx_frequency(self, range_velocity: float) -> None:
+        freq = self.tx_frequency(range_velocity)
+        logger.info("Set TX frequency %.1f", freq)
         with self._lock:
-            self._flowgraph.set_gpredict_tx_frequency(self.tx_frequency(range_velocity))
+            self._flowgraph.set_gpredict_tx_frequency(freq)
 
     def set_tx_selector(self, mode: str) -> None:
         logger.info("Selecting mode %s", mode)

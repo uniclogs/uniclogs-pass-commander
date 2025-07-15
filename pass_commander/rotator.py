@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import os
 import struct
+from time import sleep
 from threading import Event, Lock, Thread
 from typing import TYPE_CHECKING
 
@@ -95,6 +96,10 @@ class Rotator:
         self._stop = Event()
         last_reported = None
         while True:
+            # Either the controller or rot2prog doesn't like back-to-back commands, times out if
+            # status is called too early after go. This time is the shortest measured empirically
+            # time that won't cause a timeout.
+            sleep(0.4)
             try:
                 with self._rotlock:
                     now = AzEl(*self._rot.status())
@@ -114,7 +119,6 @@ class Rotator:
             # - Serial communication failure
 
             if now.az in self._ppd.shift(pos.az) and now.el in self._ppd.shift(pos.el):
-                logger.info("Reached az el")
                 os.write(self._w, struct.pack("ff", now.az, now.el))
                 self._stop.set()
 
@@ -158,7 +162,7 @@ class Rotator:
         # FIXME: error on clamp?
         # lim = self.limits()
         nav = Navigator.mode(np)
-        logger.info("Nav mode: %s", nav)
+        logger.info("Nav mode:\n%s", nav)
         az, el = nav.azel(az, el)
         # az = lim.az.clamp(az)
         # el = lim.el.clamp(el)

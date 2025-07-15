@@ -22,7 +22,7 @@ class RotCmd(Cmd):
         epoll.register(self.rot.listener, select.EPOLLIN)
         while True:
             for _ in epoll.poll(-1):
-                print('\n', self.rot.event())
+                print(f'\n{self.rot.event()}\n{self.prompt}', end='')
 
     def do_limits(self, _arg: str) -> None:
         print(*self.rot.limits())

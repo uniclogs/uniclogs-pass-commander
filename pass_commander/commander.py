@@ -56,9 +56,9 @@ class SinglePass:
         # - configure gain/radios
         # - start rx doppler
         # - at 0 degrees - send morse
-        # - at 10 degrees - enable edl
+        # - at min_el degrees - enable edl
         # - ability to mark maxel
-        # - at 10 degrees - disable edl
+        # - at min_el degrees - disable edl
         # - at 0 degrees - send morse
         # - park antenna
         # - disable gain/radios
@@ -73,72 +73,74 @@ class SinglePass:
 
         # FIXME: log messages at AOS, Max el, LOS
         times, az, el = pos
-
-        # FIXME: event when rotator reaches position/error
-        # FIXME: skip during pass resume
-        # Orient antenna to where the satellite wil rise
-        # FIXME: compensate for slew rate, point at midpointish thing
-        self.rot.go(AzEl(az.degrees[0], el.degrees[0]))
-        logger.info("Started rotator movement")
-        # FIXME: guess from slew rate about how long it would take instead
-        # of waiting indefinitely
-        events = self.epoll.poll(-1)
-        if len(events) > 1:
-            raise RuntimeError("More events than expected")
-        if events[0][0] != self.rot.listener:
-            raise RuntimeError("Unexpected event fired")
-        self.on_positioned(self.rot, events[0][1])
-
-        # TODO: finally block to turn ptt off/close socket
         aos = times[np.argmax(el.degrees > self.min_el)]
         los = times[len(el.degrees) - 1 - np.argmax(np.flip(el.degrees) > self.min_el)]
 
         logger.info("AOS: %s", aos.utc_datetime())
         logger.info("LOS: %s", los.utc_datetime())
 
-        aosfd.settime(aos.utc_datetime().timestamp(), absolute=True)
-        losfd.settime(los.utc_datetime().timestamp(), absolute=True)
-        rotfd.settime(times[0].utc_datetime().timestamp(), absolute=True)
-        radfd.settime(times[0].utc_datetime().timestamp(), absolute=True)
-
-        self.epoll.register(aosfd.fileno(), select.EPOLLIN)
-        self.epoll.register(losfd.fileno(), select.EPOLLIN)
-        self.epoll.register(rotfd.fileno(), select.EPOLLIN)
-        self.epoll.register(radfd.fileno(), select.EPOLLIN)
-
-        # FIXME: Ident action
         self.action = {
             aosfd.fileno(): partial(self.on_rise, aosfd),
             losfd.fileno(): partial(self.on_fall, losfd),
-            self.rot.listener: partial(self.on_rot_error, self.rot),
+            self.rot.listener: partial(self.on_rot_event, self.rot),
             rotfd.fileno(): partial(
                 self.on_rotator, rotfd, (iter(times), iter(az.degrees), iter(el.degrees))
             ),
             radfd.fileno(): partial(self.on_rx_doppler, radfd, (iter(rv[0]), iter(rv[1].m_per_s))),
         }
 
-        stop = False
-        while not stop:
-            for fd, event in self.epoll.poll(-1):
-                try:
-                    if stop := not self.action[fd](event):
-                        break
-                except StopIteration:
-                    self.epoll.unregister(fd)
-                except Exception:
-                    logger.exception("Event loop exception")
-                    stop = True
+        self.edl: socket.socket | None = None
 
-        self.ident()
 
-        self.uhf.lna_off()
-        self.rad.set_tx_gain(3)
+        # FIXME: event when rotator reaches position/error
+        # FIXME: skip during pass resume
+        # Orient antenna to where the satellite wil rise
+        # FIXME: compensate for slew rate, point at midpointish thing
+        try:
+            self.rot.go(AzEl(az.degrees[0], el.degrees[0]))
+            logger.info("Started rotator movement")
+            # FIXME: guess from slew rate about how long it would take instead
+            # of waiting indefinitely
+            events = self.epoll.poll(-1)
+            if len(events) > 1:
+                raise RuntimeError("More events than expected")
+            if events[0][0] != self.rot.listener:
+                raise RuntimeError("Unexpected event fired")
+            self.on_positioned(self.rot, events[0][1])
 
-        self.rot.park()
-        logger.info("Parked rotator")
-        logger.info("Waiting %ds for PA to cool", self.cooloff_delay)
-        sleep(self.cooloff_delay)
-        self.sta.pa_off()
+            self.epoll.register(aosfd.fileno(), select.EPOLLIN)
+            self.epoll.register(losfd.fileno(), select.EPOLLIN)
+            self.epoll.register(rotfd.fileno(), select.EPOLLIN)
+            self.epoll.register(radfd.fileno(), select.EPOLLIN)
+
+            aosfd.settime(aos.utc_datetime().timestamp(), absolute=True)
+            losfd.settime(los.utc_datetime().timestamp(), absolute=True)
+            rotfd.settime(times[0].utc_datetime().timestamp(), absolute=True)
+            radfd.settime(times[0].utc_datetime().timestamp(), absolute=True)
+
+            stop = False
+            while not stop:
+                for fd, event in self.epoll.poll(-1):
+                    try:
+                        if stop := not self.action[fd](event):
+                            break
+                    except StopIteration:
+                        self.epoll.unregister(fd)
+                    except Exception:
+                        logger.exception("Event loop exception")
+                        stop = True
+        finally:
+            logger.info("Pass ending, safing hardware")
+            if self.edl is not None:
+                self.edl.close()
+            self.uhf.lna_off()
+            self.rad.set_tx_gain(3)
+
+            self.rot.park()
+            logger.info("Parked rotator")
+            logger.info("Waiting %ds for PA to cool", self.cooloff_delay)
+            sleep(self.cooloff_delay)
+            self.sta.pa_off()
 
     def ident(self) -> bool:
         # The identifier must be sent
@@ -148,8 +150,10 @@ class SinglePass:
 
         logger.info("Sending morse identifier")
         self.sta.ptt_on()
-        self.rad.ident()
-        self.sta.ptt_off()
+        try:
+            self.rad.ident()
+        finally:
+            self.sta.ptt_off()
         logger.info("Morse identifier sent")
         return True
 
@@ -182,10 +186,10 @@ class SinglePass:
         self.rot.go(AzEl(next(az), next(el)))
         return True
 
-    def on_rot_error(self, rot: Rotator, _event: int) -> bool:
-        # this isn't actually an error yet, only an AzEl
+    def on_rot_event(self, rot: Rotator, _event: int) -> bool:
+        # this is currently only AzEl, but may be error in the future
         evt = rot.event()
-        logger.info("on_rot_error: %s", evt)
+        logger.info("on_rot_event: %s", evt)
         return True
 
     def on_rise(self, timer: linuxfd.timerfd, _event: int) -> bool:
@@ -205,7 +209,9 @@ class SinglePass:
     def on_fall(self, timer: linuxfd.timerfd, _event: int) -> bool:
         logger.info("LOS %s", timer.read())
         self.edl.close()
+        self.edl = None
         logger.info("EDL socket closed")
+        self.ident()
         self.sta.ptt_off()
         return False
 
@@ -268,6 +274,7 @@ class Commander:
     def sleep_until_next_pass(self, sat: Satellite | None = None) -> None:
         # FIXME: recompute passes every 24 hours/when a new TLE comes out?
         # FIXME: how many days is a tle good for? Set days_lookahead based on that
+        # FIXME: now that we have an event loop can this be part of it?
 
         if sat is None:
             sat = Satellite(
