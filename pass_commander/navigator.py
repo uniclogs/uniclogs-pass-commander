@@ -71,7 +71,7 @@ class Navigator(metaclass=ABCMeta):
         z = (abs(rise - culm) + abs(culm - fall)) > (1.5 * pi)
         return ''.join(
             f"rise: {rise_time} {deg(rise):.1f}°az\n"
-            f"culm: {culm_time} {deg(culm):.1f}°el\n"
+            f"culm: {culm_time} {self.info.culm[0].el.degrees:.1f}°el\n"
             f"fall: {fall_time} {deg(fall):.1f}°az\n"
             f"Zero_cross: {z} mode: {self.__class__.__name__}",
         )

@@ -145,7 +145,7 @@ class Rotator:
             self._stop.set()
         if self._thread is not None:
             self._thread.join()
-        self._thread = Thread(target=self._events, args=(pos,))
+        self._thread = Thread(target=self._events, args=(pos,), name=f"Rotator-{az:.1f}-{el:.1f}")
         self._thread.start()
 
     def position(self) -> AzEl:

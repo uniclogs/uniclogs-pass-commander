@@ -122,6 +122,7 @@ class SinglePass:
             while not stop:
                 for fd, event in self.epoll.poll(-1):
                     try:
+                        logger.debug("%s", self.action[fd])
                         if stop := not self.action[fd](event):
                             break
                     except StopIteration:
