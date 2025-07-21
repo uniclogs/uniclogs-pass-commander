@@ -4,7 +4,6 @@ import logging
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import timedelta
-from math import degrees as deg
 from typing import TYPE_CHECKING, NamedTuple
 
 import requests
@@ -151,8 +150,8 @@ class Tracker:
         r = requests.get(
             'https://api.openweathermap.org/data/3.0/onecall',
             params={
-                'lat': f'{deg(self.obs.lat):.3f}',
-                'lon': f'{deg(self.obs.lon):.3f}',
+                'lat': f'{self.obs.latitude.degrees:.3f}',
+                'lon': f'{self.obs.longitude.degrees:.3f}',
                 'exclude': 'minutely,hourly,daily,alerts',
                 'units': 'metric',
                 'appid': self.owmid,
@@ -160,6 +159,7 @@ class Tracker:
             timeout=10,
         )
         r.raise_for_status()
+        logger.debug("Weather response: %s", r.json())
         c = r.json()["current"]
         return (c['temp'], c['pressure'])
 
