@@ -78,6 +78,10 @@ ignore = [
     # Another one that might be good later but for now is too argessive. Many of
     # the numbers it flags are obvious from context.
     "PLR2004",  # magic value used in comparison
+    # This discourages things like returning early on errors which I think is a
+    # good idea, not a bad one
+    "PLR0911",  # too many return statements
+
 ]
 
 [tool.ruff.lint.per-file-ignores]
