@@ -41,38 +41,36 @@ class Station:
             logger.info("Sending command: %s", verb)
             self.s.send(verb.encode())
             return self._response()
-        raise ValueError(f"invalid command: {verb}")
+        raise StationError(f"invalid command: {verb}")
 
     def _response(self) -> str:
         # FIXME: timeout, stationd should respond quickly
         data = self.s.recv(4096)
         stat = data.decode().strip()
         logger.info("StationD response: %s", stat)
+        if stat.upper().startswith("FAIL: "):
+            raise StationError(stat.removeprefix('FAIL: '))
         return stat
 
-    def pa_on(self) -> str:
+    def pa_on(self) -> None:
         self._command(f"{self.band} pa-power on")
-        return self._command(f"{self.band} pa-power on")
+        self._command(f"{self.band} pa-power on")
 
-    def pa_off(self) -> str:
+    def pa_off(self) -> None:
         ret = self._command(f"{self.band} pa-power off")
-        if re.search(r"PTT Conflict", ret):
-            raise StationError(ret.removeprefix('FAIL: '))
         if m := re.search(r"Please wait (\S+) seconds", ret):
             sleep(int(m.group(1)))
-            return self.pa_off()
-        return ret
+            self.pa_off()
 
-    def ptt_on(self) -> str:
-        ret = self._command(f"{self.band} rf-ptt on")
+    def ptt_on(self) -> None:
+        self._command(f"{self.band} rf-ptt on")
         # FIXME TIMING: wait for PTT to open (100ms is just a guess)
         sleep(0.1)
-        return ret
 
-    def ptt_off(self) -> str:
-        return self._command(f"{self.band} rf-ptt off")
+    def ptt_off(self) -> None:
+        self._command(f"{self.band} rf-ptt off")
 
-    def lna_on(self) -> str:
+    def lna_on(self) -> None:
         # The LNA Relay is weird, it's not guaranteed to go on on the first try
         # so it must be cycled. From Glenn in oresat-comms, 2024-09-05:
         # Whereas there only needs to be a 100 ms pulse to switch the relay
@@ -83,18 +81,16 @@ class Station:
         sleep(self.lna_delay)
         self._command(f"{self.band} lna off")
         sleep(self.lna_delay)
-        ret = self._command(f"{self.band} lna on")
+        self._command(f"{self.band} lna on")
         sleep(self.lna_delay)
-        return ret
 
-    def lna_off(self) -> str:
+    def lna_off(self) -> None:
         self._command(f"{self.band} lna off")
         sleep(self.lna_delay)
         self._command(f"{self.band} lna on")
         sleep(self.lna_delay)
-        ret = self._command(f"{self.band} lna off")
+        self._command(f"{self.band} lna off")
         sleep(self.lna_delay)
-        return ret
 
     def gettemp(self) -> float:
         ret = self._command("gettemp")
