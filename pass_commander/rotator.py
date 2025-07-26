@@ -92,6 +92,13 @@ class Rotator:
         return self._r
 
     def _events(self, pos: AzEl) -> None:
+        # FIXME: It turns out the rot2prog controller shouldn't be talked to more than once every 2
+        # seconds otherwise it can potentially be knocked out of calibration by a degree or two.
+        # This requires a total rethink of we operate it but I need to run a pass tomorrow so for
+        # now this short circuits the logic in a way where I need to make minimal changes elsewhere
+        os.write(self._w, struct.pack("ff", pos.az, pos.el))
+        return
+
         # Only runs from go to commanded position
         self._stop = Event()
         last_reported = None

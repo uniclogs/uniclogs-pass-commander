@@ -122,6 +122,7 @@ class SinglePass:
                         stop = True
         finally:
             logger.info("Pass ending, safing hardware")
+            self.sta.ptt_off()
             if self.edl is not None:
                 self.edl.close()
             self.uhf.lna_off()

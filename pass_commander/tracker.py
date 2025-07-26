@@ -175,7 +175,7 @@ class Tracker:
         fall = singlepass.fall.time
 
         pass_duration_seconds = (fall - rise) * 24 * 60 * 60
-        passtimes = self.ts.linspace(rise, fall, int(pass_duration_seconds * 2))
+        passtimes = self.ts.linspace(rise, fall, int(pass_duration_seconds / 2))
         positions = (sat - self.obs).at(passtimes)
 
         el, az, _ = positions.altaz(temperature_C=temp, pressure_mbar=pressure)
