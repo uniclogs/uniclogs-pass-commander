@@ -23,14 +23,26 @@ dependencies = [
 dev = [
     "build >= 1.2.2",
     "mypy >= 0.942",
-    "pytest >= 8.3.3",
+    "pytest >= 8.4.0",
     "types-requests >= 2.25",
     "responses >= 0.25.6",
     "ruff >= 0.8.0",
+    "pytest-cov>=6.2.0",
 ]
 
 [project.scripts]
 pass-commander = "pass_commander.main:main"
+
+[tool.pytest.ini_options]
+addopts = [
+    "--cov=pass_commander",
+    "--cov-report=term-missing",
+]
+
+[tool.coverage.run]
+omit = [
+    "pass_commander/mock/*"
+]
 
 [tool.mypy]
 ignore_missing_imports = true
