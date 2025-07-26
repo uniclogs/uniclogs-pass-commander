@@ -4,8 +4,8 @@ from __future__ import annotations
 import logging
 import os
 import struct
-from time import sleep
 from threading import Event, Lock, Thread
+from time import sleep
 from typing import TYPE_CHECKING
 
 import rot2prog

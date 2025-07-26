@@ -5,6 +5,7 @@ import select
 from cmd import Cmd
 from pathlib import Path
 from threading import Thread
+from typing import Never
 
 from pass_commander.config import AzEl
 from pass_commander.rotator import Rotator
@@ -17,7 +18,7 @@ class RotCmd(Cmd):
         self.rot = rot
         Thread(target=self._listen, daemon=True).start()
 
-    def _listen(self):
+    def _listen(self) -> Never:
         epoll = select.epoll()
         epoll.register(self.rot.listener, select.EPOLLIN)
         while True:

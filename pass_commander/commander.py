@@ -91,22 +91,12 @@ class SinglePass:
 
         self.edl: socket.socket | None = None
 
-
         # FIXME: event when rotator reaches position/error
         # FIXME: skip during pass resume
         # Orient antenna to where the satellite wil rise
         # FIXME: compensate for slew rate, point at midpointish thing
         try:
-            self.rot.go(AzEl(az.degrees[0], el.degrees[0]))
-            logger.info("Started rotator movement")
-            # FIXME: guess from slew rate about how long it would take instead
-            # of waiting indefinitely
-            events = self.epoll.poll(-1)
-            if len(events) > 1:
-                raise RuntimeError("More events than expected")
-            if events[0][0] != self.rot.listener:
-                raise RuntimeError("Unexpected event fired")
-            self.on_positioned(self.rot, events[0][1])
+            self.pre_position(az.degrees[0], el.degrees[0])
 
             self.epoll.register(aosfd.fileno(), select.EPOLLIN)
             self.epoll.register(losfd.fileno(), select.EPOLLIN)
@@ -157,6 +147,18 @@ class SinglePass:
             self.sta.ptt_off()
         logger.info("Morse identifier sent")
         return True
+
+    def pre_position(self, az: float, el: float) -> None:
+        self.rot.go(AzEl(az, el))
+        logger.info("Started rotator movement")
+        # FIXME: guess from slew rate about how long it would take instead
+        # of waiting indefinitely
+        events = self.epoll.poll(-1)
+        if len(events) > 1:
+            raise RuntimeError("More events than expected")
+        if events[0][0] != self.rot.listener:
+            raise RuntimeError("Unexpected event fired")
+        self.on_positioned(self.rot, events[0][1])
 
     def on_positioned(self, rot: Rotator, _event: int) -> bool:
         logger.info("Rotator at initial position, enabling pa, lna")
@@ -209,7 +211,8 @@ class SinglePass:
     # FIXME: setup on_fall in on_rise so that self.edl can be local
     def on_fall(self, timer: linuxfd.timerfd, _event: int) -> bool:
         logger.info("LOS %s", timer.read())
-        self.edl.close()
+        if self.edl is not None:
+            self.edl.close()
         self.edl = None
         logger.info("EDL socket closed")
         self.ident()

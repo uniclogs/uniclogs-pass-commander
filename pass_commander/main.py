@@ -99,7 +99,9 @@ def _cfgerr(args: Namespace, msg: str) -> None:
 
 
 def main() -> None:  # noqa: D103 C901 PLR0912 PLR0915
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)-25s: %(message)s')
+    logging.basicConfig(
+        level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)-25s: %(message)s'
+    )
     logging.getLogger("apscheduler").setLevel(logging.ERROR)
 
     args = handle_args()
