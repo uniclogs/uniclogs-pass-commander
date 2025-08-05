@@ -50,7 +50,22 @@ class SinglePass:
         self.cooloff_delay = cooloff_delay
         self.min_el = 15  # FIXME: move to calc
 
-    def work(self, pos: tuple[Time, Angle, Angle], rv: tuple[Time, Velocity]) -> None:
+    def work(self, pos: tuple[Time, Angle, Angle], nav: tuple[Time, Angle, Angle], rv: tuple[Time, Velocity]) -> None:
+        '''Do all actions for a single pass
+
+        Parameters
+        ----------
+        pos
+            Position of the satellite, given in (time, azimuth, elevation)
+        nav
+            Navigation positions for the antenna, given in (time, azimuth, elevation). The rotator
+            may be using an alternate track mode (e.g. flip, backhand) so az and el aren't always
+            going to be the same as pos. Also it may have different times. El can go from 0 - 180.
+        rv
+            Range velocity of the satellite, as in how fast it's approaching or receding from the
+            observer, given in (time, velocity). Used for doppler shift calculations.
+
+        '''
         # Tasks:
         # - Pre-position antenna
         # - configure gain/radios
@@ -73,7 +88,9 @@ class SinglePass:
 
         # FIXME: log messages at AOS, Max el, LOS
         times, az, el = pos
+        # first time above min_el
         aos = times[np.argmax(el.degrees > self.min_el)]
+        # last time above min_el
         los = times[len(el.degrees) - 1 - np.argmax(np.flip(el.degrees) > self.min_el)]
 
         logger.info("AOS: %s", aos.utc_datetime())
@@ -84,7 +101,7 @@ class SinglePass:
             losfd.fileno(): partial(self.on_fall, losfd),
             self.rot.listener: partial(self.on_rot_event, self.rot),
             rotfd.fileno(): partial(
-                self.on_rotator, rotfd, (iter(times), iter(az.degrees), iter(el.degrees))
+                self.on_rotator, rotfd, (iter(nav[0]), iter(nav[1].degrees), iter(nav[2].degrees))
             ),
             radfd.fileno(): partial(self.on_rx_doppler, radfd, (iter(rv[0]), iter(rv[1].m_per_s))),
         }
@@ -96,7 +113,7 @@ class SinglePass:
         # Orient antenna to where the satellite wil rise
         # FIXME: compensate for slew rate, point at midpointish thing
         try:
-            self.pre_position(az.degrees[0], el.degrees[0])
+            self.pre_position(nav[1].degrees[0], nav[2].degrees[0])
 
             self.epoll.register(aosfd.fileno(), select.EPOLLIN)
             self.epoll.register(losfd.fileno(), select.EPOLLIN)
@@ -105,8 +122,8 @@ class SinglePass:
 
             aosfd.settime(aos.utc_datetime().timestamp(), absolute=True)
             losfd.settime(los.utc_datetime().timestamp(), absolute=True)
-            rotfd.settime(times[0].utc_datetime().timestamp(), absolute=True)
-            radfd.settime(times[0].utc_datetime().timestamp(), absolute=True)
+            rotfd.settime(nav[0][0].utc_datetime().timestamp(), absolute=True)
+            radfd.settime(rv[0][0].utc_datetime().timestamp(), absolute=True)
 
             stop = False
             while not stop:
@@ -172,7 +189,7 @@ class SinglePass:
         return True
 
     def on_rotator(
-        self, timer: linuxfd.timerfd, pos: tuple[Time, Angle, Angle], _event: int
+        self, timer: linuxfd.timerfd, nav: tuple[Time, Angle, Angle], _event: int
     ) -> bool:
         timer.read()
         # FIXME: find original track and log it
@@ -185,7 +202,7 @@ class SinglePass:
         #    deg(nav.el),
         # )
 
-        times, az, el = pos
+        times, az, el = nav
         timer.settime(next(times).utc_datetime().timestamp(), absolute=True)
         self.rot.go(AzEl(next(az), next(el)))
         return True
@@ -339,8 +356,8 @@ class Commander:
             logger.info("Fetched temp/pressure")
 
             pos, rv = self.track.track(sat, np, temp, pressure)
-            pos = self.singlepass.rot.path(np, pos)
-            self.singlepass.work(pos, rv)
+            nav = self.singlepass.rot.path(np, pos)
+            self.singlepass.work(pos, nav, rv)
 
             seconds = timedelta(days=np.fall.time - self.track.ts.now()).total_seconds()
             if seconds > 0:
@@ -360,11 +377,15 @@ class Commander:
         logger.info(
             "Rise time: %s Max el: %.3f", np.rise.time.utc_datetime(), np.culm[0].el.degrees
         )
-        pos, (rvtime, rangevel) = self.track.track(sat, np)
-        postime, az, el = self.singlepass.rot.path(np, pos)
+        (postime, az, el), (rvtime, rangevel) = self.track.track(sat, np)
+        navtime, navaz, navel = self.singlepass.rot.path(np, (postime, az, el))
         offset = postime[0] - self.track.ts.now()
         logger.info("Dryrun offset: %f", offset)
-        self.singlepass.work((postime - offset, az, el), (rvtime - offset, rangevel))
+        self.singlepass.work(
+            (postime - offset, az, el),
+            (navtime - offset, navaz, navel),
+            (rvtime - offset, rangevel)
+        )
         logger.info("Dry run complete")
 
     def test_morse(self) -> None:

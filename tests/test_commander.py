@@ -44,4 +44,4 @@ class TestSinglePass:
         pt -= 1000
         rt -= 1000
 
-        sp.work((pt, az, el), (rt, rv))
+        sp.work((pt, az, el), (pt, az, el), (rt, rv))
