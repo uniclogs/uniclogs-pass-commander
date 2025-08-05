@@ -349,15 +349,14 @@ class Commander:
                     degc,
                     self.max_temp,
                 )
-                continue  # FIXME: sleep until end of current pass
+            else:
+                # Pre-compute pass time/alt/az/rv
+                temp, pressure = self.track.weather()
+                logger.info("Fetched temp/pressure")
 
-            # Pre-compute pass time/alt/az/rv
-            temp, pressure = self.track.weather()
-            logger.info("Fetched temp/pressure")
-
-            pos, rv = self.track.track(sat, np, temp, pressure)
-            nav = self.singlepass.rot.path(np, pos)
-            self.singlepass.work(pos, nav, rv)
+                pos, rv = self.track.track(sat, np, temp, pressure)
+                nav = self.singlepass.rot.path(np, pos)
+                self.singlepass.work(pos, nav, rv)
 
             seconds = timedelta(days=np.fall.time - self.track.ts.now()).total_seconds()
             if seconds > 0:
