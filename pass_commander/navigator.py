@@ -101,7 +101,7 @@ class Straight(Navigator):
 
 class Backhand(Navigator):
     def azel(self, az: Angle, el: Angle) -> tuple[Angle, Angle]:
-        return ((az.radians + pi) % (2 * pi), pi - el.radians)
+        return (Angle(radians=(az.radians + pi) % (2 * pi)), Angle(radians=pi - el.radians))
 
 
 class Flip(Navigator):

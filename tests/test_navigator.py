@@ -5,6 +5,8 @@ from skyfield.units import Angle
 from pass_commander.navigator import Backhand, Flip, Navigator, Straight
 from pass_commander.tracker import PassEvent, PassInfo
 
+# FIXME: nav tracks should always start/end on el 0/180, or possibly AOS/LOS cutoff?
+
 
 class TestNavigator:
     ts = load.timescale()
@@ -18,7 +20,9 @@ class TestNavigator:
 
         nav = Navigator.mode(info)
         assert isinstance(nav, Straight)
-        nav.azel(Angle(radians=np.full(2, 45.0)), Angle(radians=np.full(2, 45.0)))
+        az, el = nav.azel(Angle(radians=np.full(2, 45.0)), Angle(radians=np.full(2, 45.0)))
+        assert isinstance(az, Angle)
+        assert isinstance(el, Angle)
         str(nav)
 
     def test_nav_backhand(self) -> None:
@@ -30,7 +34,9 @@ class TestNavigator:
 
         nav = Navigator.mode(info)
         assert isinstance(nav, Backhand)
-        nav.azel(Angle(radians=np.full(2, 45.0)), Angle(radians=np.full(2, 45.0)))
+        az, el = nav.azel(Angle(radians=np.full(2, 45.0)), Angle(radians=np.full(2, 45.0)))
+        assert isinstance(az, Angle)
+        assert isinstance(el, Angle)
         str(nav)
 
     def test_nav_flip(self) -> None:
@@ -42,5 +48,8 @@ class TestNavigator:
 
         nav = Navigator.mode(info)
         assert isinstance(nav, Flip)
-        nav.azel(Angle(radians=np.full(2, 45.0)), Angle(radians=np.full(2, 45.0)))
+        az, el = nav.azel(Angle(radians=np.full(2, 45.0)), Angle(radians=np.full(2, 45.0)))
+        assert isinstance(az, Angle)
+        assert isinstance(el, Angle)
+        # FIXME: el is monotonic from 0 to 180 or viceversa
         str(nav)
