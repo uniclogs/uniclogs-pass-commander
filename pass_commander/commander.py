@@ -236,9 +236,8 @@ class SinglePass:
         self.rad.set_tx_selector("edl")
         self.sta.ptt_on()
 
-        self.edl = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.edl = socket.socket(socket.AF_INET, socket.SOCK_DGRAM | socket.SOCK_NONBLOCK)
         self.edl.bind(self.conf.edl)
-        self.edl.settimeout(0.5)  # FIXME: nonblocking
         logger.info("EDL socket open")
         self.epoll.register(self.edl.fileno(), select.EPOLLIN | select.EPOLLERR)
         self.action[self.edl.fileno()] = partial(self.on_edl, self.edl)
