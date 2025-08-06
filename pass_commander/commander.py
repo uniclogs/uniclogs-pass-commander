@@ -1,4 +1,3 @@
-# ruff: noqa: ERA001
 import logging
 import select
 import socket
@@ -91,6 +90,7 @@ class SinglePass:
         losfd = linuxfd.timerfd(rtc=True, nonBlocking=True)
         rotfd = linuxfd.timerfd(rtc=True, nonBlocking=True)
         radfd = linuxfd.timerfd(rtc=True, nonBlocking=True)
+        posfd = linuxfd.timerfd(rtc=True, nonBlocking=True)
 
         # FIXME: log messages at AOS, Max el, LOS
         times, az, el = pos
@@ -109,6 +109,9 @@ class SinglePass:
                 self.on_rotator, rotfd, (iter(nav[0]), iter(nav[1].degrees), iter(nav[2].degrees))
             ),
             radfd.fileno(): partial(self.on_rx_doppler, radfd, (iter(rv[0]), iter(rv[1].m_per_s))),
+            posfd.fileno(): partial(
+                self.on_pos, posfd, (iter(times), iter(az.degrees), iter(el.degrees))
+            ),
         }
 
         self.edl: socket.socket | None = None
@@ -122,11 +125,13 @@ class SinglePass:
             self.epoll.register(losfd.fileno(), select.EPOLLIN)
             self.epoll.register(rotfd.fileno(), select.EPOLLIN)
             self.epoll.register(radfd.fileno(), select.EPOLLIN)
+            self.epoll.register(posfd.fileno(), select.EPOLLIN)
 
             aosfd.settime(aos.utc_datetime().timestamp(), absolute=True)
             losfd.settime(los.utc_datetime().timestamp(), absolute=True)
             rotfd.settime(nav[0][0].utc_datetime().timestamp(), absolute=True)
             radfd.settime(rv[0][0].utc_datetime().timestamp(), absolute=True)
+            posfd.settime(pos[0][0].utc_datetime().timestamp(), absolute=True)
 
             stop = False
             while not stop:
@@ -205,29 +210,25 @@ class SinglePass:
         self, timer: linuxfd.timerfd, nav: tuple[Time, Angle, Angle], _event: int
     ) -> bool:
         timer.read()
-        # FIXME: find original track and log it
-        # logger.info(
-        #    '%-28s%7.3f°az %7.3f°el to %7.3f°az %7.3f°el',
-        #    "Navigation corrected from",
-        #    deg(track.az),
-        #    deg(track.el),
-        #    deg(nav.az),
-        #    deg(nav.el),
-        # )
-
-        times, az, el = next(nav[0]), next(nav[1]), next(nav[2])
-        while times < self.ts.now():
+        time, az, el = next(nav[0]), next(nav[1]), next(nav[2])
+        while time < self.ts.now():
             logger.info(
                 '%-28s%s %7.3f°az %7.3f°el',
                 'Skipping nav',
-                times.utc_datetime(),
+                time.utc_datetime(),
                 az,
                 el,
             )
-            times, az, el = next(nav[0]), next(nav[1]), next(nav[2])
-
-        timer.settime(times.utc_datetime().timestamp(), absolute=True)
+            time, az, el = next(nav[0]), next(nav[1]), next(nav[2])
+        timer.settime(time.utc_datetime().timestamp(), absolute=True)
         self.rot.go(AzEl(az, el))
+        return True
+
+    def on_pos(self, timer: linuxfd.timerfd, pos: tuple[Time, Angle, Angle], _event: int) -> bool:
+        timer.read()
+        time, az, el = next(pos[0]), next(pos[1]), next(pos[2])
+        logger.info('%-28s: %7.3f°az %7.3f°el', "Satellite position", az, el)
+        timer.settime(time.utc_datetime().timestamp(), absolute=True)
         return True
 
     def on_rise(self, timer: linuxfd.timerfd, _event: int) -> bool:
@@ -257,7 +258,6 @@ class SinglePass:
     def on_edl(self, edl: socket.socket, _event: int) -> bool:
         packet = edl.recv(4096)
         # FIXME: Recalculate current range_vel for exact time?
-        # index = time.searchsorted(now(), side='right')
         self.rad.edl(packet, self.current_rv)
         logger.info("Sent EDL")
         return True
