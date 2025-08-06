@@ -16,16 +16,12 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    # The recommended way to setup python in an action but since we depend on
-    # the system package python3-hamlib we have to use the system python.
-    # - name: Set up Python 3.10
-    #   uses: actions/setup-python@v3
-    #   with:
-    #     python-version: "3.10"
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+        cache: "pip"
     - name: Install dependencies
       run: |
-        sudo apt update
-        sudo apt install -y python3.10 python3-hamlib
         python -m pip install --upgrade pip
         python -m pip install .[dev]
     - name: Lint with Ruff
