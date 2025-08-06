@@ -1,11 +1,9 @@
-# ruff: noqa: ERA001
 from __future__ import annotations
 
 import logging
 import os
 import struct
 from threading import Event, Lock, Thread
-from time import sleep
 from typing import TYPE_CHECKING
 
 import rot2prog
@@ -53,7 +51,7 @@ class Bound:
 
 
 class Rotator:
-    def __init__(self, path: Path, cal: AzEl = AzEl(0, 0)) -> None:
+    def __init__(self, path: Path, cal: AzEl = AzEl(0, 0), cmd_interval: float = 2.0) -> None:
         '''Monitor and point an antenna.
 
         The antenna has maximum and minimum az/el and also a minimum rotation
@@ -66,6 +64,8 @@ class Rotator:
             path to rotator serial device, e.g. /dev/ttyS0
         cal
             Rotator offsets to apply, e.g. if the physical antenna has been turned.
+        cmd_interval
+            Time to wait inbetween polling the rotator position
         '''
         self.cal = cal  # FIXME: implement
         # FIXME: set from beamwidth/slew rate/actual min step size?
@@ -82,6 +82,7 @@ class Rotator:
         # it's incorrect. Need to verify behavior on the actual controller
         self._ppd = Bound(round(-1 / self.ppd, 1) - 0.1, round(1 / self.ppd, 1) + 0.1)
         self._rotlock = Lock()
+        self.cmd_interval = cmd_interval
 
         self._stop: Event | None = None
         self._thread: Thread | None = None
@@ -92,21 +93,12 @@ class Rotator:
         return self._r
 
     def _events(self, pos: AzEl) -> None:
-        # FIXME: It turns out the rot2prog controller shouldn't be talked to more than once every 2
-        # seconds otherwise it can potentially be knocked out of calibration by a degree or two.
-        # This requires a total rethink of we operate it but I need to run a pass tomorrow so for
-        # now this short circuits the logic in a way where I need to make minimal changes elsewhere
-        os.write(self._w, struct.pack("ff", pos.az, pos.el))
-        return
-
         # Only runs from go to commanded position
         self._stop = Event()
         last_reported = None
-        while True:
-            # Either the controller or rot2prog doesn't like back-to-back commands, times out if
-            # status is called too early after go. This time is the shortest measured empirically
-            # time that won't cause a timeout.
-            sleep(0.4)
+        # It turns out the rot2prog controller shouldn't be talked to more than once every 2
+        # seconds otherwise it can potentially be knocked out of calibration by a degree or two.
+        while not self._stop.wait(timeout=self.cmd_interval):
             try:
                 with self._rotlock:
                     now = AzEl(*self._rot.status())
@@ -129,9 +121,8 @@ class Rotator:
                 os.write(self._w, struct.pack("ff", now.az, now.el))
                 self._stop.set()
 
-            if self._stop.wait(timeout=0.5):
-                break
         self._stop = None
+        self._thread = None
 
     def event(self) -> AzEl:
         return AzEl(*struct.unpack('ff', os.read(self.listener, 8)))
@@ -148,11 +139,12 @@ class Rotator:
             # FIXME: check result
             self._rot.set(az, el)
 
-        if self._stop is not None:
-            self._stop.set()
+    def wait_for(self, pos: AzEl) -> None:
         if self._thread is not None:
-            self._thread.join()
-        self._thread = Thread(target=self._events, args=(pos,), name=f"Rotator-{az:.1f}-{el:.1f}")
+            raise RuntimeError("Already waiting for movement")
+        self._thread = Thread(
+            target=self._events, args=(pos,), name=f"Rotator-{pos.az:.1f}-{pos.el:.1f}"
+        )
         self._thread.start()
 
     def position(self) -> AzEl:
@@ -166,13 +158,10 @@ class Rotator:
         time, az, el = pos
         # sat az/el to rotator movement
         # TODO: filter by stepsize
-        # FIXME: error on clamp?
-        # lim = self.limits()
+        # FIXME: error if nav az el exceeds limits
         nav = Navigator.mode(np)
         logger.info("Nav mode:\n%s", nav)
         az, el = nav.azel(az, el)
-        # az = lim.az.clamp(az)
-        # el = lim.el.clamp(el)
 
         return time, az, el
 

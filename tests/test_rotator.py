@@ -12,7 +12,7 @@ from pass_commander.rotator import Rotator
 class TestRotator:
     @pytest.fixture
     def rot(self, rotator: PtyRotator) -> Rotator:
-        with closing(Rotator(rotator)) as r:
+        with closing(Rotator(rotator, cmd_interval=0)) as r:
             yield r
 
     def test_go(self, rot: Rotator) -> None:
@@ -26,6 +26,7 @@ class TestRotator:
             AzEl(14.555346144996733, 0.4611240576248191),
         ):
             rot.go(pos)
+            rot.wait_for(pos)
             sel.select()
             event = rot.event()
             assert isinstance(event, AzEl)

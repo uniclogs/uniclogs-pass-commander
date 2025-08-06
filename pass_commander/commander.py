@@ -11,7 +11,7 @@ import linuxfd
 import numpy as np
 from jeepney import DBusAddress, Properties
 from jeepney.io.blocking import open_dbus_connection
-from skyfield.api import Time
+from skyfield.api import Time, load
 from skyfield.units import Angle, Velocity
 
 from .config import AzEl, Config
@@ -46,12 +46,18 @@ class SinglePass:
         self.uhf = Station(conf.station, band='uhf', lna_delay=lna_delay)
         self.rot = Rotator(conf.rotator, cal=conf.cal)
         self.rad = Radio(conf.flowgraph, conf.edl_dest, conf.name, morse_delay=morse_delay)
+        self.ts = load.timescale()
 
         self.cooloff_delay = cooloff_delay
         self.min_el = 15  # FIXME: move to calc
 
-    def work(self, pos: tuple[Time, Angle, Angle], nav: tuple[Time, Angle, Angle], rv: tuple[Time, Velocity]) -> None:
-        '''Do all actions for a single pass
+    def work(
+        self,
+        pos: tuple[Time, Angle, Angle],
+        nav: tuple[Time, Angle, Angle],
+        rv: tuple[Time, Velocity],
+    ) -> None:
+        '''Do all actions for a single pass.
 
         Parameters
         ----------
@@ -99,7 +105,6 @@ class SinglePass:
         self.action = {
             aosfd.fileno(): partial(self.on_rise, aosfd),
             losfd.fileno(): partial(self.on_fall, losfd),
-            self.rot.listener: partial(self.on_rot_event, self.rot),
             rotfd.fileno(): partial(
                 self.on_rotator, rotfd, (iter(nav[0]), iter(nav[1].degrees), iter(nav[2].degrees))
             ),
@@ -108,8 +113,6 @@ class SinglePass:
 
         self.edl: socket.socket | None = None
 
-        # FIXME: event when rotator reaches position/error
-        # FIXME: skip during pass resume
         # Orient antenna to where the satellite wil rise
         # FIXME: compensate for slew rate, point at midpointish thing
         try:
@@ -137,19 +140,26 @@ class SinglePass:
                     except Exception:
                         logger.exception("Event loop exception")
                         stop = True
+        except Exception:
+            # It'll take a while to get through the finally block so notify the user early on error
+            logger.exception("!!Work pass interrupted:")
+            raise
         finally:
-            logger.info("Pass ending, safing hardware")
-            self.sta.ptt_off()
-            if self.edl is not None:
-                self.edl.close()
-            self.uhf.lna_off()
-            self.rad.set_tx_gain(3)
+            self.reset_hardware()
 
-            self.rot.park()
-            logger.info("Parked rotator")
-            logger.info("Waiting %ds for PA to cool", self.cooloff_delay)
-            sleep(self.cooloff_delay)
-            self.sta.pa_off()
+    def reset_hardware(self) -> None:
+        logger.info("Pass ending, safing hardware")
+        self.sta.ptt_off()
+        if self.edl is not None:
+            self.edl.close()
+        self.uhf.lna_off()
+        self.rad.set_tx_gain(3)
+
+        self.rot.park()
+        logger.info("Parked rotator")
+        logger.info("Waiting %ds for PA to cool", self.cooloff_delay)
+        sleep(self.cooloff_delay)
+        self.sta.pa_off()
 
     def ident(self) -> bool:
         # The identifier must be sent
@@ -169,6 +179,7 @@ class SinglePass:
     def pre_position(self, az: float, el: float) -> None:
         self.rot.go(AzEl(az, el))
         logger.info("Started rotator movement")
+        self.rot.wait_for(AzEl(az, el))
         # FIXME: guess from slew rate about how long it would take instead
         # of waiting indefinitely
         events = self.epoll.poll(-1)
@@ -176,11 +187,13 @@ class SinglePass:
             raise RuntimeError("More events than expected")
         if events[0][0] != self.rot.listener:
             raise RuntimeError("Unexpected event fired")
-        self.on_positioned(self.rot, events[0][1])
+        self.epoll.unregister(self.rot.listener)
+        pos = self.rot.event()  # clears the event
+        logger.info("pre-position arrived at %s", pos)
+        self.on_positioned(events[0][1])
 
-    def on_positioned(self, rot: Rotator, _event: int) -> bool:
+    def on_positioned(self, _event: int) -> bool:
         logger.info("Rotator at initial position, enabling pa, lna")
-        rot.event()
         self.rad.set_tx_gain(self.conf.txgain)
         self.uhf.lna_on()
         self.sta.pa_on()
@@ -202,15 +215,19 @@ class SinglePass:
         #    deg(nav.el),
         # )
 
-        times, az, el = nav
-        timer.settime(next(times).utc_datetime().timestamp(), absolute=True)
-        self.rot.go(AzEl(next(az), next(el)))
-        return True
+        times, az, el = next(nav[0]), next(nav[1]), next(nav[2])
+        while times < self.ts.now():
+            logger.info(
+                '%-28s%s %7.3f°az %7.3f°el',
+                'Skipping nav',
+                times.utc_datetime(),
+                az,
+                el,
+            )
+            times, az, el = next(nav[0]), next(nav[1]), next(nav[2])
 
-    def on_rot_event(self, rot: Rotator, _event: int) -> bool:
-        # this is currently only AzEl, but may be error in the future
-        evt = rot.event()
-        logger.info("on_rot_event: %s", evt)
+        timer.settime(times.utc_datetime().timestamp(), absolute=True)
+        self.rot.go(AzEl(az, el))
         return True
 
     def on_rise(self, timer: linuxfd.timerfd, _event: int) -> bool:
@@ -247,10 +264,19 @@ class SinglePass:
 
     def on_rx_doppler(self, timer: linuxfd.timerfd, rv: Velocity, _event: int) -> bool:
         timer.read()
-        times, range_velocities = rv
-        timer.settime(next(times).utc_datetime().timestamp(), absolute=True)
+        time, range_velocity = next(rv[0]), next(rv[1])
+        while time < self.ts.now():
+            logger.info(
+                '%-28s%s %7.3f rv',
+                'Skipping doppler',
+                time.utc_datetime(),
+                range_velocity,
+            )
+            time, range_velocity = next(rv[0]), next(rv[1])
+
+        timer.settime(time.utc_datetime().timestamp(), absolute=True)
         # FIXME: set doppler to point that minimizes error over the interval (midpoint?)
-        self.current_rv = next(range_velocities)
+        self.current_rv = range_velocity
         logger.debug("doppler %f", self.current_rv)
         self.rad.set_rx_frequency(self.current_rv)
         return True
@@ -383,7 +409,7 @@ class Commander:
         self.singlepass.work(
             (postime - offset, az, el),
             (navtime - offset, navaz, navel),
-            (rvtime - offset, rangevel)
+            (rvtime - offset, rangevel),
         )
         logger.info("Dry run complete")
 

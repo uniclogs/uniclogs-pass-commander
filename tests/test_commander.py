@@ -29,6 +29,7 @@ class TestSinglePass:
 
     def test_work_pass(self, mock_config: Config, sat: Satellite) -> None:
         sp = SinglePass(mock_config, lna_delay=0.0, morse_delay=0.0, cooloff_delay=0.0)
+        sp.rot.cmd_interval = 0
 
         tk = Tracker(mock_config.observer)
         times = tk.next_pass(sat, sat.epoch)
