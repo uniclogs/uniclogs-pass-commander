@@ -6,7 +6,7 @@ commands to the [OreSat0](https://www.oresat.org/satellites/oresat0) and
 [CubeSats](https://en.wikipedia.org/wiki/CubeSat).
 
 ## Major functions
-* Tracks satellites using the excellent [ephem](https://rhodesmill.org/pyephem/)
+* Tracks satellites using the excellent [Skyfield](https://rhodesmill.org/skyfield/)
   module
   * Fetches fresh TLEs from [celestrak.org](https://celestrak.org)
   * Alternatively uses TLEs from a local [Gpredict](https://github.com/csete/gpredict)
@@ -14,8 +14,8 @@ commands to the [OreSat0](https://www.oresat.org/satellites/oresat0) and
   * Calibrates for atmospheric refraction with local temperature and pressure,
     fetched via API from [OpenWeather](https://openweathermap.org/)
 * Adapts tracking information to suit az/el rotator limits
-* Interacts with [Hamlib rotctld](https://github.com/Hamlib/Hamlib/wiki/Documentation)
-  to command the antenna rotator
+* Interacts with [Alfa Rot2Prog Controller](http://alfaradio.ca/) via
+  [Rot2prog](https://pypi.org/project/rot2prog/) to command the antenna rotator
 * Interacts with [stationd](https://github.com/uniclogs/uniclogs-stationd) to
   control amplifiers and station RF path
 * Interacts with the [OreSat GNURadio flowgraph](https://github.com/uniclogs/uniclogs-sdr)
@@ -23,9 +23,9 @@ commands to the [OreSat0](https://www.oresat.org/satellites/oresat0) and
 
 ## Installing
 ```sh
-git clone https://github.com/uniclogs/uniclogs-pass_commander.git
+git clone https://github.com/uniclogs/uniclogs-pass-commander.git
 sudo apt install python3-pip
-pip3 install -e uniclogs-pass_commander[dev]
+pip3 install -e uniclogs-pass-commander[dev]
 ```
 
 Running `pass-commander --template` will generate a
