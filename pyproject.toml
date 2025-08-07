@@ -114,14 +114,10 @@ ignore = [
 # Remove this line when resolved.
 extend-immutable-calls = [
     "pass_commander.config.AzEl",  # a tuple, immutable
-    # This produces a GeographiPosition which is hashable so probably immutable
+    # This produces a GeographicPosition which is hashable so probably immutable
     "skyfield.api.wgs84.latlon",
     "ipaddress.IPv4Address",  # hashable
 ]
 
 [tool.setuptools_scm]
 # This page intentionally left blank
-
-# When PEP-725 gets accepted
-# [external]
-# dependencies = [ "pkg:generic/python3-hamlib" ]

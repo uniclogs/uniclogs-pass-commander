@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class Edl(Thread):
-    def __init__(self, addr: tuple[str, int]) -> None:
+    def __init__(self, addr: tuple[str, int] | None = None) -> None:
         '''Thread that simulates an EDL listening connection.
 
         Parameters
@@ -22,9 +22,11 @@ class Edl(Thread):
             127.0.0.2) because pass-commander listens on 127.0.0.1.
         '''
         super().__init__(name=self.__class__.__name__, daemon=True)
-        self._addr = addr
+        if addr is None:
+            addr = ('127.0.0.1', 0)
         self._edl = socket.socket(socket.AF_INET, socket.SOCK_DGRAM | socket.SOCK_NONBLOCK)
         self._edl.bind(addr)
+        self._addr: tuple[str, int] = self._edl.getsockname()
         self._r, self._w = os.pipe2(os.O_NONBLOCK)
 
     @property
@@ -93,7 +95,7 @@ class FlowgraphState:
 
 
 class Flowgraph:
-    def __init__(self, addr: tuple[str, int]) -> None:
+    def __init__(self, addr: tuple[str, int] | None = None) -> None:
         '''Simulate xmlrpc flowgraph interface for testing.
 
         Parameters
@@ -101,9 +103,11 @@ class Flowgraph:
         addr
             IP address and port to listen on, usually localhost or some loopback.
         '''
-        self._addr = addr
+        if addr is None:
+            addr = ('127.0.0.1', 0)
         self._state = FlowgraphState()
         self._server = SimpleXMLRPCServer(addr, allow_none=True, logRequests=False)
+        self._addr: tuple[str, int] = self._server.socket.getsockname()
         self._server.register_instance(self._state)
 
         self._r, self._w = os.pipe2(os.O_NONBLOCK)

@@ -141,12 +141,12 @@ class Config:
     # Main
     sat_id: str = ''
     owmid: str = ''
-    edl: tuple[str, int] = ("", 10025)
+    edl: tuple[str, int] = ('', 10025)
     txgain: int = 2
 
     # Hosts
-    edl_dest: tuple[str, int] = ("127.0.0.1", 10025)
-    flowgraph: tuple[str, int] = ("127.0.0.1", 10080)
+    edl_dest: tuple[str, int] = ('127.0.0.1', 10025)
+    flowgraph: tuple[str, int] = ('127.0.0.1', 10080)
     station: tuple[str, int] = ('127.0.0.1', 5005)
     rotator: PosixPath = PosixPath('/dev/null')  # noqa: RUF009
 
@@ -197,7 +197,7 @@ class Config:
         main = _pop_table(config, 'Main')
         self.sat_id = str(_pop(main, 'satellite', str, self.sat_id))
         self.owmid = str(_pop(main, 'owmid', str, self.owmid))
-        self.edl = ("", int(_pop(main, 'edl_port', int, self.edl[1])))
+        self.edl = ('', int(_pop(main, 'edl_port', int, self.edl[1])))
         self.txgain = int(_pop(main, 'txgain', int))
 
         hosts = _pop_table(config, 'Hosts')

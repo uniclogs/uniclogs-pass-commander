@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class Stationd(Thread):
-    def __init__(self, addr: tuple[str, int]) -> None:
+    def __init__(self, addr: tuple[str, int] | None = None) -> None:
         '''Thread that locally simulates stationd for testing.
 
         Parameters
@@ -19,9 +19,11 @@ class Stationd(Thread):
             IP and port to listen with, usually localhost or some loopback
         '''
         super().__init__(name=self.__class__.__name__, daemon=True)
-        self._addr = addr
+        if addr is None:
+            addr = ('127.0.0.1', 0)
         self._s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM | socket.SOCK_NONBLOCK)
         self._s.bind(addr)
+        self._addr: tuple[str, int] = self._s.getsockname()
         self._r, self._w = os.pipe2(os.O_NONBLOCK)
 
     @property

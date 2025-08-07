@@ -161,18 +161,18 @@ def main() -> None:  # noqa: D103 C901 PLR0912 PLR0915
         if 'con' in conf.mock:
             # Radio mock
             conf.edl = ("127.0.0.1", conf.edl[1])
-            conf.edl_dest = ("127.0.0.2", 10025)
-            mock_edl = mock.Edl(conf.edl_dest)
+            mock_edl = mock.Edl()
+            conf.edl_dest = mock_edl.addr
             mock_edl.start()
-            conf.flowgraph = ("127.0.0.2", 10080)
-            mock_flowgraph = mock.Flowgraph(conf.flowgraph)
+            mock_flowgraph = mock.Flowgraph()
+            conf.flowgraph = mock_flowgraph.addr
             mock_flowgraph.start()
             # Tracker mock
             conf.owmid = ''
 
         if 'tx' in conf.mock:
-            conf.station = ("127.0.0.2", 5005)
-            mock_stationd = mock.Stationd(conf.station)
+            mock_stationd = mock.Stationd()
+            conf.station = mock_stationd.addr
             mock_stationd.start()
 
         if 'rot' in conf.mock:

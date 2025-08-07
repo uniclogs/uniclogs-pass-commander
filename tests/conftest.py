@@ -6,10 +6,8 @@ import pytest
 import tomlkit
 from tomlkit.toml_document import TOMLDocument
 
+from pass_commander import mock
 from pass_commander.config import Config
-from pass_commander.mock.flowgraph import Edl, Flowgraph
-from pass_commander.mock.rotator import PtyRotator
-from pass_commander.mock.station import Stationd
 from pass_commander.satellite import Satellite
 
 
@@ -65,7 +63,7 @@ def good_config(tmp_path: Path, good_toml: TOMLDocument) -> Config:
 
 @pytest.fixture
 def stationd() -> tuple[str, int]:
-    s = Stationd(("127.0.0.1", 5005))
+    s = mock.Stationd()
     s.start()
     try:
         yield s.addr
@@ -76,13 +74,13 @@ def stationd() -> tuple[str, int]:
 
 @pytest.fixture(params=(1, 2, 4))
 def rotator(request) -> str:  # noqa: ANN001
-    with closing(PtyRotator(pulses_per_degree=request.param)) as r:
+    with closing(mock.PtyRotator(pulses_per_degree=request.param)) as r:
         yield r.client_path
 
 
 @pytest.fixture
 def flowgraph() -> tuple[str, int]:
-    f = Flowgraph(("127.0.0.1", 10080))
+    f = mock.Flowgraph()
     f.start()
     try:
         yield f
@@ -93,7 +91,7 @@ def flowgraph() -> tuple[str, int]:
 
 @pytest.fixture
 def edl() -> tuple[str, int]:
-    e = Edl(("127.0.0.1", 10125))
+    e = mock.Edl()
     e.start()
     try:
         yield e

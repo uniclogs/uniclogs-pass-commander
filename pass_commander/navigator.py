@@ -106,7 +106,7 @@ class Backhand(Navigator):
 
 class Flip(Navigator):
     def __init__(self, info: PassInfo) -> None:
-        '''Navigation strategy that primarily rotates el and trys to minimize az.
+        '''Navigation strategy that primarily rotates el and tries to minimize az.
 
         This prevents the wrist flip problem in high angle passes.
 
@@ -126,7 +126,12 @@ class Flip(Navigator):
         self.flip_az = Angle(radians=flip_az)
 
     def azel(self, az: Angle, el: Angle) -> tuple[Angle, Angle]:
-        # FIXME: what even is this
+        # A flip only moves elevation so azimuth is fixed at flip_az and elevation needs to be
+        # extended across 0 - 180, passing through 90. Since the target path generally won't follow
+        # the navigated path (e.g. has a max el of 80, whereas this path must always go through 90)
+        # we need to pick the el at each step that minimizes the error between antenna and target.
+        # FIXME: Still working on reasoning this out. For example I'd expect at 0 target el this
+        #        would set 0 antenna el, but it doesn't.
         flip_el = pi / 2 - (np.cos(az.radians - self.flip_az.radians) * (pi / 2 - el.radians))
         return (Angle(radians=np.full(len(flip_el), self.flip_az.radians)), Angle(radians=flip_el))
 

@@ -24,10 +24,7 @@ logger = logging.getLogger(__name__)
 
 class RotatorError(Exception):
     def __init__(self, arg: str) -> None:
-        '''Exceptions raised by Rotator.
-
-        If arg is Hamlib.Rot it will attempt to retrieve the error from the library
-        '''
+        '''Exceptions raised by Rotator.'''
         super().__init__(arg)
 
 
@@ -55,8 +52,9 @@ class Rotator:
         '''Monitor and point an antenna.
 
         The antenna has maximum and minimum az/el and also a minimum rotation
-        step size. Also hamlib is weird and limited so this tries to paper over
-        some of that and detects when the antenna is moving.
+        step size. This iteration is specific to talking to an alfa rot2prog
+        controller which has a limitation that it cannot be sent a command more
+        than once every two seconds. This isn't enforced here yet.
 
         Parameters
         ----------
