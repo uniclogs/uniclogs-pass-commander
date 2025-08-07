@@ -116,7 +116,6 @@ extend-immutable-calls = [
     "pass_commander.config.AzEl",  # a tuple, immutable
     # This produces a GeographicPosition which is hashable so probably immutable
     "skyfield.api.wgs84.latlon",
-    "ipaddress.IPv4Address",  # hashable
 ]
 
 [tool.setuptools_scm]

@@ -187,7 +187,8 @@ def main() -> None:  # noqa: D103 C901 PLR0912 PLR0915
             elif args.action == 'dryrun':
                 commander.dryrun()
             elif args.action == 'nextpass':
-                commander.sleep_until_next_pass()
+                sat, np = commander.sleep_until_next_pass()
+                logger.info('Slept for pass %s by sat %s', np, sat)
             else:
                 logger.info("Unknown action: %s", args.action)
         finally:

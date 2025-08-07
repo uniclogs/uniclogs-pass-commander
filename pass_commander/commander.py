@@ -18,7 +18,7 @@ from .radio import Radio
 from .rotator import Rotator
 from .satellite import Satellite
 from .station import Station
-from .tracker import Tracker
+from .tracker import PassInfo, Tracker
 
 logger = logging.getLogger(__name__)
 
@@ -318,54 +318,48 @@ class Commander:
             sleep(60)
         logger.info("System clock is synchronized.")
 
-    def sleep_until_next_pass(self, sat: Satellite | None = None) -> None:
-        # FIXME: recompute passes every 24 hours/when a new TLE comes out?
-        # FIXME: how many days is a tle good for? Set days_lookahead based on that
-        # FIXME: now that we have an event loop can this be part of it?
+    def sleep_until_next_pass(self) -> tuple[Satellite, PassInfo]:
+        # FIXME: How many days is a TLE good for? Set next_pass(lookahead) based on that
+        # FIXME: How often are TLEs updated? Set tle_refresh based on that
+        # FIXME: Now that we have an event loop can this be part of it?
 
-        if sat is None:
+        while True:
             sat = Satellite(
                 self.conf.sat_id, tle_cache=self.conf.tle_cache, local_only='con' in self.conf.mock
             )
-        np = self.track.next_pass(sat, min_el=self.min_el)
-        if np is None:
-            # FIXME: sleep for 24h?
-            raise RuntimeError("No pass found")
-        to_sleep = timedelta(days=np.rise.time - self.track.ts.now())
-        if to_sleep > timedelta():
+            np = self.track.next_pass(sat, min_el=self.min_el)
+            if np is None:
+                # FIXME: sleep until next TLE?
+                raise RuntimeError("No pass found")
+
+            to_sleep = timedelta(days=np.rise.time - self.track.ts.now())
+            if to_sleep <= timedelta():
+                logger.info("In a pass now!")
+                return sat, np
+
             logger.info(
                 "Sleeping %s until next rise time %s for a %.2f°el pass.",
                 to_sleep,
                 np.rise.time.astimezone(None),
                 np.culm[0].el.degrees,
             )
-            sleep(to_sleep.total_seconds())  # FIXME: wake up a bit before a pass to adjust TLEs?
-        else:
-            logger.info("In a pass now!")
+
+            tle_refresh = timedelta(days=1)
+            # FIXME: wake up a bit before a pass to adjust TLEs?
+            sleep(min(to_sleep.total_seconds(), tle_refresh.total_seconds()))
+
+            tle_age = timedelta(days=self.track.ts.now() - sat.epoch)
+            if tle_age <= tle_refresh:
+                return sat, np
+            logger.info('TLE out of date by %s, refreshing', tle_age)
+
+        raise RuntimeError("Unreachable?")
 
     def autorun(self, count: int) -> None:
         logger.info("Running for %d passes", count)
-        # FIXME: use scheduler to sleep to next pass
         while count > 0:
             self.require_clock_sync()
-
-            sat = Satellite(
-                self.conf.sat_id, tle_cache=self.conf.tle_cache, local_only='con' in self.conf.mock
-            )
-            self.sleep_until_next_pass(sat)
-            # FIXME: How often are TLEs updated? should this be the same as days_lookahead?
-
-            # FIXME: check.
-            if self.track.ts.now() - sat.epoch > 1:
-                sat = Satellite(
-                    self.conf.sat_id,
-                    tle_cache=self.conf.tle_cache,
-                    local_only='con' in self.conf.mock,
-                )
-            np = self.track.next_pass(sat, min_el=self.min_el)
-            if np is None:
-                # FIXME: get np from sleep_until_next_pass and then go around the loop again?
-                raise RuntimeError("No pass found")
+            sat, np = self.sleep_until_next_pass()
 
             degc = self.singlepass.sta.gettemp()
             if degc > self.max_temp:
@@ -377,7 +371,7 @@ class Commander:
             else:
                 # Pre-compute pass time/alt/az/rv
                 temp, pressure = self.track.weather()
-                logger.info("Fetched temp/pressure")
+                logger.info("Current weather: %f°C %f mBar", temp, pressure)
 
                 pos, rv = self.track.track(sat, np, temp, pressure)
                 nav = self.singlepass.rot.path(np, pos)
