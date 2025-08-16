@@ -31,6 +31,7 @@ def good_toml() -> TOMLDocument:
     observer['lon'] = -122.681394
     observer['alt'] = 500
     observer['name'] = 'not-real'
+    observer['temperature-limit'] = 33.0
 
     cfg['Main'] = main
     cfg['Hosts'] = hosts

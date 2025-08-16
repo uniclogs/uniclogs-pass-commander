@@ -288,8 +288,7 @@ class Commander:
         self.conf = conf
         self.track = Tracker(conf.observer, owmid=conf.owmid)
 
-        # FIXME: should these go in config?
-        self.max_temp = 30.0
+        # FIXME: should this go in config?
         self.min_el = Angle(degrees=15)
         self.singlepass = SinglePass(conf)
 
@@ -363,11 +362,13 @@ class Commander:
             sat, np = self.sleep_until_next_pass()
 
             degc = self.singlepass.sta.gettemp()
-            if degc > self.max_temp:
+            # FIXME: Should temperature be monitored during the pass as well? Should stationd send
+            #        a warning event?
+            if degc > self.conf.temp_limit:
                 logger.info(
                     "Temperature is too high (%f°C > %f°C). Skipping this pass.",
                     degc,
-                    self.max_temp,
+                    self.conf.temp_limit,
                 )
             else:
                 # Pre-compute pass time/alt/az/rv

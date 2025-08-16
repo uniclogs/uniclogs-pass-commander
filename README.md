@@ -73,6 +73,8 @@ Physical properties of the ground station.
 * `lon` (Float or Integer) - Station longitude in decimal notation.
 * `alt` (Integer) - Station altitude in meters.
 * `name` (String) - station name or callsign.
+* `temperature-limit` (Float or Integer, optional) - Temperature in Celsius above which stops a
+  pass from being run to protect the hardware. Default: 40°C
 
 #### [TleCache]
 Optional local cache of TLEs. Currently only 3 line TLEs are supported. Format

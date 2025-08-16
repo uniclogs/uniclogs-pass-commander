@@ -157,6 +157,9 @@ class Config:
     cal: AzEl = AzEl(0, 0)
     slew: AzEl | None = None
     beam_width: float | None = None
+    # FIXME: the limit should be retrieved from stationd instead of our toml but that feature
+    #        doesn't exist.
+    temp_limit: float = 40.0
 
     # Satellite
     tle_cache: TleCache = field(default_factory=dict)
@@ -221,6 +224,7 @@ class Config:
                 observer.display_name, 'lon', self.observer.longitude.degrees
             )
         self.name = str(_pop(observer, 'name', str))  # XMLRPC can't handle toml subclass
+        self.temp_limit = float(_pop(observer, 'temperature-limit', Real, self.temp_limit))
 
         self.tle_cache = dict(_pop_table(config, 'TleCache', {}))
         # validate TLEs
