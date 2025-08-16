@@ -19,6 +19,7 @@ class TestConfig:
             f.flush()
         conf = Config(path)
         assert conf.sat_id == good_toml['Main']['satellite']
+        assert conf.min_el.degrees == good_toml['Main']['minimum-pass-elevation']
         assert conf.owmid == good_toml['Main']['owmid']
         assert conf.edl == ("", good_toml['Main']['edl_port'])
         assert conf.txgain == good_toml['Main']['txgain']
@@ -43,8 +44,10 @@ class TestConfig:
             )
         assert set(conf.tle_cache) == set(good_toml['TleCache'])
 
-        # satellite, owmid, edl_port, temperature-limit, TleCache is optional
+        # satellite, minimum-pass-elevation, owmid, edl_port, temperature-limit, TleCache are
+        # optional
         del good_toml['Main']['satellite']
+        del good_toml['Main']['minimum-pass-elevation']
         del good_toml['Main']['owmid']
         del good_toml['Main']['edl_port']
         del good_toml['TleCache']

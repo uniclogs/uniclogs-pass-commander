@@ -17,6 +17,7 @@ def good_toml() -> TOMLDocument:
 
     main = tomlkit.table()
     main['satellite'] = "fake-sat"
+    main['minimum-pass-elevation'] = 16
     main['owmid'] = "fake-id"
     main['edl_port'] = 12345
     main['txgain'] = 47

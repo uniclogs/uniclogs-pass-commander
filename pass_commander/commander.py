@@ -287,9 +287,6 @@ class Commander:
         '''Create the main pass coordinator.'''
         self.conf = conf
         self.track = Tracker(conf.observer, owmid=conf.owmid)
-
-        # FIXME: should this go in config?
-        self.min_el = Angle(degrees=15)
         self.singlepass = SinglePass(conf)
 
     def require_clock_sync(self) -> None:
@@ -327,7 +324,7 @@ class Commander:
             sat = Satellite(
                 self.conf.sat_id, tle_cache=self.conf.tle_cache, local_only='con' in self.conf.mock
             )
-            np = self.track.next_pass(sat, min_el=self.min_el)
+            np = self.track.next_pass(sat, min_el=self.conf.min_el)
             if np is None:
                 # FIXME: sleep until next TLE?
                 raise RuntimeError("No pass found")
