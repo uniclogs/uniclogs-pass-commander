@@ -32,14 +32,14 @@ class RotCmd(Cmd):
         az, el = arg.split()
         pos = AzEl(float(az), float(el))
         self.rot.go(pos)
-        self.rot.wait_for(pos)
+        self.rot.start_polling(pos)
 
     def do_pos(self, _arg: str) -> None:
         print(self.rot.position())
 
     def do_park(self, _arg: str) -> None:
         self.rot.park()
-        self.rot.wait_for(AzEl(180, 90))
+        self.rot.start_polling(AzEl(180, 90))
 
     def do_ppd(self, _arg: str) -> None:
         print(self.rot.ppd)

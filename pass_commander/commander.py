@@ -184,9 +184,10 @@ class SinglePass:
     def pre_position(self, az: float, el: float) -> None:
         self.rot.go(AzEl(az, el))
         logger.info("Started rotator movement")
-        self.rot.wait_for(AzEl(az, el))
-        # FIXME: guess from slew rate about how long it would take instead
-        # of waiting indefinitely
+        self.rot.start_polling(AzEl(az, el))
+        # FIXME: guess from slew rate about how long it would take instead of
+        # waiting indefinitely. We'll need some way of finding slew rate first
+        # though.
         events = self.epoll.poll(-1)
         if len(events) > 1:
             raise RuntimeError("More events than expected")

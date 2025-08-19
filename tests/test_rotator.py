@@ -26,7 +26,7 @@ class TestRotator:
             AzEl(14.555346144996733, 0.4611240576248191),
         ):
             rot.go(pos)
-            rot.wait_for(pos)
+            rot.start_polling(pos)
             sel.select()
             event = rot.event()
             assert isinstance(event, AzEl)

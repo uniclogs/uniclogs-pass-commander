@@ -151,7 +151,7 @@ class Config:
     rotator: PosixPath = PosixPath('/dev/null')  # noqa: RUF009
 
     # Observer
-    # lat, lon, alt TOML fields
+    # lat, lon, alt TOML fields. Default value here is Portland ebv1 station.
     observer: GeographicPosition = wgs84.latlon(45.509054 * N, -122.681394 * E, 50)
     name: str = ''
     cal: AzEl = AzEl(0, 0)

@@ -137,7 +137,7 @@ class Rotator:
             # FIXME: check result
             self._rot.set(az, el)
 
-    def wait_for(self, pos: AzEl) -> None:
+    def start_polling(self, pos: AzEl) -> None:
         if self._thread is not None:
             raise RuntimeError("Already waiting for movement")
         self._thread = Thread(

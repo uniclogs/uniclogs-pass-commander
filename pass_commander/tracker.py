@@ -81,7 +81,7 @@ class Tracker:
         if min_el is None:
             min_el = Angle(degrees=15)
 
-        # Find all passes above 0°. find_evends() does have an elevation argument but that returns
+        # Find all passes above 0°. find_events() does have an elevation argument but that returns
         # times at the given elevation and we want the times where it crosses the horizon, 0°.
         times, events = sat.find_events(self.obs, after, after + lookahead)
         if not times:
@@ -112,9 +112,9 @@ class Tracker:
                 passes.append(singlepass)
                 singlepass = []
 
-        # The pass may end after the lookahead time, so trucate. Either the orbit is unusual,
+        # The pass may end after the look-ahead time, so truncate. Either the orbit is unusual,
         # like a geosynchronous orbit, or the user should wait and recompute with the next
-        # avaliable TLE
+        # available TLE
         # FIXME: this is kind of unsatisfactory, the user may have to recompute during a pass.
         # Is there a better way of handling this?
         if events[-1] == RISE:
@@ -122,7 +122,7 @@ class Tracker:
         if events[-1] != FALL:
             singlepass.append(after + lookahead)
             passes.append(singlepass)
-            # FIXME: log.warn on trucation, but only if it's the only pass and only if
+            # FIXME: log.warn on truncation, but only if it's the only pass and only if
             # it's above min_el
 
         # Find the next pass with culmination greater than min_el
