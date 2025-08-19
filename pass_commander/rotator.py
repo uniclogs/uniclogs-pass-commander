@@ -1,22 +1,30 @@
 from __future__ import annotations
 
 import logging
+import os
+import struct
+from threading import Event, Lock, Thread
+from typing import TYPE_CHECKING
 
-import Hamlib
+import rot2prog
 
 from .config import AzEl
+from .navigator import Navigator
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from skyfield.units import Angle, Time
+
+    from .tracker import PassInfo
+
 
 logger = logging.getLogger(__name__)
 
 
 class RotatorError(Exception):
-    def __init__(self, arg: Hamlib.Rot | str) -> None:
-        '''Exceptions raised by Rotator.
-
-        If arg is Hamlib.Rot it will attempt to retrieve the error from the library
-        '''
-        if isinstance(arg, Hamlib.Rot):
-            arg = Hamlib.rigerror(arg.error_status)
+    def __init__(self, arg: str) -> None:
+        '''Exceptions raised by Rotator.'''
         super().__init__(arg)
 
 
@@ -27,91 +35,138 @@ class Bound:
         self.upper = upper
 
     def shift(self, x: float) -> Bound:
-        self.lower -= x
-        self.upper -= x
-        return self
+        return Bound(self.lower + x, self.upper + x)
 
     def clamp(self, x: float) -> float:
         return min(max(x, self.lower), self.upper)
 
+    def __contains__(self, item: float) -> bool:
+        return self.lower <= item <= self.upper
+
+    def __str__(self) -> str:
+        return f'[{self.lower},{self.upper}]'
+
 
 class Rotator:
-    def __init__(self, host: str | None, port: int = 4533, cal: AzEl = AzEl(0, 0)) -> None:
+    def __init__(self, path: Path, cal: AzEl = AzEl(0, 0), cmd_interval: float = 2.0) -> None:
         '''Monitor and point an antenna.
 
         The antenna has maximum and minimum az/el and also a minimum rotation
-        step size. Also hamlib is weird and limited so this tries to paper over
-        some of that and detects when the antenna is moving.
+        step size. This iteration is specific to talking to an alfa rot2prog
+        controller which has a limitation that it cannot be sent a command more
+        than once every two seconds. This isn't enforced here yet.
 
         Parameters
         ----------
-        host
-            IP address of netrotctl or None for the simulated dummy rotator
-        port
-            Port that netrotctl is listening on
+        path
+            path to rotator serial device, e.g. /dev/ttyS0
         cal
             Rotator offsets to apply, e.g. if the physical antenna has been turned.
+        cmd_interval
+            Time to wait inbetween polling the rotator position
         '''
+        self.cal = cal  # FIXME: implement
+        # FIXME: set from beamwidth/slew rate/actual min step size?
+        # do we actually need a min step size?
+        # should azel be filtered to min step?
+        # should this be a config option?
         self.step = AzEl(5, 3)  # Minimum rotator stepsize
 
-        Hamlib.rig_set_debug(Hamlib.RIG_DEBUG_NONE)  # FIXME: hook up to verbose
-        if host is None:
-            self.rot = Hamlib.Rot(Hamlib.ROT_MODEL_DUMMY)
-        else:
-            self.rot = Hamlib.Rot(Hamlib.ROT_MODEL_NETROTCTL)
-            self.rot.set_conf("rot_pathname", f"{host}:{port}")
-        self.rot.do_exception = True  # I recoil, visibly, in horror
-        self._moving = False
+        # FIXME: only open during pass/close after. Also check mode
+        self._rot = rot2prog.ROT2Prog(str(path))
+        self.ppd = self._rot.get_pulses_per_degree()
+        # FIXME: adjusting bounds by 0.1 is a hack to get around floating point
+        # noise but it should be below the controller resolution so I don't think
+        # it's incorrect. Need to verify behavior on the actual controller
+        self._ppd = Bound(round(-1 / self.ppd, 1) - 0.1, round(1 / self.ppd, 1) + 0.1)
+        self._rotlock = Lock()
+        self.cmd_interval = cmd_interval
 
-        try:
-            self.rot.open()
-        except RuntimeError as e:
-            raise RotatorError(self.rot) from e
-        self.rot.state.az_offset = cal.az
-        self.rot.state.el_offset = cal.el
-        self.lim = AzEl(
-            Bound(self.rot.state.min_az, self.rot.state.max_az).shift(cal.az),
-            Bound(self.rot.state.min_el, self.rot.state.max_el).shift(cal.el),
-        )
-        self.last_reported: AzEl | None = None
+        self._stop: Event | None = None
+        self._thread: Thread | None = None
+        self._r, self._w = os.pipe2(os.O_NONBLOCK)
 
     @property
-    def is_moving(self) -> bool:
-        return self._moving
+    def listener(self) -> int:
+        return self._r
 
-    def position(self) -> AzEl:
-        # This consistently returns the last requested az/el, not present location
-        AzEl(*self.rot.get_position())
-        # Second request gives us the actual present location - FIXME: why?
-        return AzEl(*self.rot.get_position())
+    def _events(self, pos: AzEl) -> None:
+        # Only runs from go to commanded position
+        self._stop = Event()
+        last_reported = None
+        # It turns out the rot2prog controller shouldn't be talked to more than once every 2
+        # seconds otherwise it can potentially be knocked out of calibration by a degree or two.
+        while not self._stop.wait(timeout=self.cmd_interval):
+            try:
+                with self._rotlock:
+                    now = AzEl(*self._rot.status())
+            except RuntimeError as e:
+                # FIXME: what errors does status actually raise?
+                # FIXME: write error to _w
+                raise RotatorError("Rotator status failed") from e
+            if now == last_reported:
+                # FIXME: write error to _w
+                raise RotatorError("Rotator movement failed")
+            last_reported = now
+
+            # standard com:
+            # - event when rotator nears target
+            # errors:
+            # - Rotator not moving when it should be
+            # - Serial communication failure
+
+            if now.az in self._ppd.shift(pos.az) and now.el in self._ppd.shift(pos.el):
+                os.write(self._w, struct.pack("ff", now.az, now.el))
+                self._stop.set()
+
+        self._stop = None
+        self._thread = None
+
+    def event(self) -> AzEl:
+        return AzEl(*struct.unpack('ff', os.read(self.listener, 8)))
+
+    def limits(self) -> tuple[Bound, Bound]:
+        with self._rotlock:
+            lim = self._rot.get_limits()
+        return (Bound(lim[0], lim[1]), Bound(lim[2], lim[3]))
 
     def go(self, pos: AzEl) -> None:
-        try:
-            now = self.position()
-        except RuntimeError as e:
-            raise RotatorError(self.rot) from e
+        az, el = pos
+        logger.info('%-18s%7.3f°az %7.3f°el', "Moving to", az, el)
+        with self._rotlock:
+            # FIXME: check result
+            self._rot.set(az, el)
 
-        if self.is_moving and now == self.last_reported:
-            raise RotatorError("Rotator movement failed")
+    def start_polling(self, pos: AzEl) -> None:
+        if self._thread is not None:
+            raise RuntimeError("Already waiting for movement")
+        self._thread = Thread(
+            target=self._events, args=(pos,), name=f"Rotator-{pos.az:.1f}-{pos.el:.1f}"
+        )
+        self._thread.start()
 
-        az = self.lim.az.clamp(pos.az)
-        el = self.lim.el.clamp(pos.el)
-
-        if abs(az - now.az) > self.step.az or abs(el - now.el) > self.step.el:
-            logger.info(
-                '%-18s%7.3f°az %7.3f°el to %7.3f°az %7.3f°el',
-                "Moving from",
-                now.az,
-                now.el,
-                az,
-                el,
-            )
-            self._moving = True
-            self.rot.set_position(az, el)
-            self.last_reported = now
-        else:
-            self._moving = False
+    def position(self) -> AzEl:
+        with self._rotlock:
+            return AzEl(*self._rot.status())
 
     def park(self) -> None:
-        # TODO rot.park()?
         self.go(AzEl(180, 90))
+
+    def path(self, np: PassInfo, pos: tuple[Time, Angle, Angle]) -> tuple[Time, Angle, Angle]:
+        time, az, el = pos
+        # sat az/el to rotator movement
+        # TODO: filter by stepsize
+        # FIXME: error if nav az el exceeds limits
+        nav = Navigator.mode(np)
+        logger.info("Nav mode:\n%s", nav)
+        az, el = nav.azel(az, el)
+
+        return time, az, el
+
+    def close(self) -> None:
+        if self._stop is not None:
+            self._stop.set()
+        if self._thread is not None:
+            self._thread.join()
+        with self._rotlock:
+            self._rot._ser.close()  # noqa: SLF001

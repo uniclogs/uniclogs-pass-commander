@@ -1,21 +1,41 @@
-import ephem
+from datetime import timedelta
 
+import responses
+from skyfield.api import E, N, wgs84
+
+from pass_commander.satellite import Satellite
 from pass_commander.tracker import Tracker
 
 
 class TestTracker:
-    def test_next_pass(self) -> None:
-        track = Tracker(
-            (ephem.degrees(45), ephem.degrees(-122), 50),
-            "OreSat0",
-            local_only=True,
-            tle_cache={
-                "OreSat0": [
-                    "ORESAT0",
-                    "1 52017U 22026K   24237.61773939  .00250196  00000+0  18531-2 0  9992",
-                    "2 52017  97.4861 255.7395 0002474 307.8296  52.2743 15.72168729136382",
+    def test_next_pass(self, sat: Satellite) -> None:
+        track = Tracker(wgs84.latlon(45.509054 * N, -122.681394 * E, 50))
+        np = track.next_pass(sat, after=sat.epoch)
+        assert np.rise.time < np.culm[0].time < np.fall.time
+        if np.fall.time - np.rise.time < (timedelta(hours=1) / timedelta(days=1)):
+            track.track(sat, np)
+
+    @responses.activate
+    def test_weather(self) -> None:
+        lat = 45.509054
+        lon = -122.681394
+        track = Tracker(wgs84.latlon(lat * N, lon * E, 50))
+        # No owmid, returns default, should not make a request
+        assert track.weather() == (25.0, 1010.0)
+
+        # With owmid it should make a request
+        track.owmid = "testid"
+        weather = (2.0, 994.0)
+        with responses.RequestsMock() as rsps:
+            rsps.add(
+                responses.GET,
+                url='https://api.openweathermap.org/data/3.0/onecall',
+                match=[
+                    responses.matchers.query_param_matcher(
+                        {"lat": f"{lat:.3f}", "lon": f"{lon:.3f}", "appid": track.owmid},
+                        strict_match=False,
+                    )
                 ],
-            },
-        )
-        date = ephem.Date(45541.170401489704)  # start of a pass, determined through divination
-        track.next_pass_after(date)
+                body=f'{{"current": {{"temp": {weather[0]}, "pressure": {weather[1]}}}}}',
+            )
+            assert track.weather() == weather

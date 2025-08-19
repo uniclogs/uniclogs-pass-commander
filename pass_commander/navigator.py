@@ -1,15 +1,22 @@
+from __future__ import annotations
+
 import logging
+from abc import ABCMeta, abstractmethod
 from math import cos, pi
 from math import degrees as deg
+from typing import TYPE_CHECKING
 
-from .config import AzEl
-from .tracker import PassInfo
+import numpy as np
+from skyfield.units import Angle
+
+if TYPE_CHECKING:
+    from .tracker import PassInfo
 
 logger = logging.getLogger(__name__)
 
 
-class Navigator:
-    def __init__(self, pass_info: PassInfo) -> None:
+class Navigator(metaclass=ABCMeta):
+    def __init__(self, info: PassInfo) -> None:
         '''Determine rotator position from a given pass.
 
         As the satellite tracks across the sky, its specific path might exceed
@@ -27,87 +34,108 @@ class Navigator:
 
         Parameters
         ----------
-        pass_info
+        info
             The specific satellite pass to determine navigation mode from
         '''
-        rise_time = pass_info.rise_time
-        rise_az = pass_info.rise_azimuth
-        maxel_time = pass_info.maximum_altitude_time
-        max_elevation = pass_info.maximum_altitude
-        set_time = pass_info.set_time
-        set_az = pass_info.set_azimuth
-        maxel_az = pass_info.maximum_altitude_azimuth
+        self.info = info
 
+    @classmethod
+    def mode(cls, info: PassInfo) -> Navigator:
+        # FIXME: This assumes a single culmination
         # Max elevation degrees above which to use nav mode flip.
-        # FIXME This should be calculated from slew rate.
+        # FIXME: This should be calculated from slew rate.
         flip_above = 78
 
-        z = (abs(rise_az - maxel_az) + abs(maxel_az - set_az)) > (1.5 * pi)
-        if self.no_zero_cross(rise_az, maxel_az, set_az):
-            self.nav_mode = self.nav_straight
-        elif self.no_zero_cross(*self.rot_pi((rise_az, maxel_az, set_az))):
-            self.nav_mode = self.nav_backhand
-        else:
-            # FIXME This probably means we need to extend into the 450°
-            # operating area
-            self.nav_mode = self.nav_straight
+        if info.culm[0].el.degrees >= flip_above:
+            return Flip(info)
+        if cls.no_zero_cross(info.rise.az.radians, info.culm[0].az.radians, info.fall.az.radians):
+            return Straight(info)
+        if cls.no_zero_cross(
+            *cls.rot_pi((info.rise.az.radians, info.culm[0].az.radians, info.fall.az.radians))
+        ):
+            return Backhand(info)
+        # FIXME This probably means we need to extend into the 450°
+        # operating area
+        logger.warning("Path and inverse both cross zero, defaulting to straight")
+        return Straight(info)
 
-        logger.info(
-            "rise:%s rise:%.3f°az maxel:%s max:%.3f°el set:%s set:%.3f°az",
-            rise_time,
-            deg(rise_az),
-            maxel_time,
-            deg(max_elevation),
-            set_time,
-            deg(set_az),
-        )
-        if deg(max_elevation) >= flip_above:
-            self.flip_az = (rise_az - ((rise_az - set_az) / 2) + pi / 2) % (2 * pi)
-            if self.az_n_hem(self.flip_az):
-                (self.flip_az,) = self.rot_pi((self.flip_az,))
-            self.nav_mode = self.nav_flip
-            logger.info("Flip at %.3f", deg(self.flip_az))
-        logger.info(
-            "Zero_cross:%s mode:%s start:%s rise:%.3f°az peak:%.3f°az set:%.3f°az",
-            z,
-            self.nav_mode.__name__,
-            rise_time,
-            deg(rise_az),
-            deg(maxel_az),
-            deg(set_az),
+    def __str__(self) -> str:
+        rise = self.info.rise.az.radians
+        culm = self.info.culm[0].az.radians
+        fall = self.info.fall.az.radians
+
+        rise_time = self.info.rise.time.astimezone(None)
+        culm_time = self.info.culm[0].time.astimezone(None)
+        fall_time = self.info.fall.time.astimezone(None)
+
+        z = (abs(rise - culm) + abs(culm - fall)) > (1.5 * pi)
+        return ''.join(
+            f"rise: {rise_time} {deg(rise):.1f}°az\n"
+            f"culm: {culm_time} {self.info.culm[0].el.degrees:.1f}°el\n"
+            f"fall: {fall_time} {deg(fall):.1f}°az\n"
+            f"Zero_cross: {z} mode: {self.__class__.__name__}",
         )
 
-    def rot_pi(self, rad: tuple[float, ...]) -> tuple[float, ...]:
+    @staticmethod
+    def rot_pi(rad: tuple[float, ...]) -> tuple[float, ...]:
         """Rotate any radian by half a circle."""
         return tuple((x + pi) % (2 * pi) for x in rad)
 
-    def no_zero_cross(self, a: float, b: float, c: float) -> bool:
+    @staticmethod
+    def no_zero_cross(a: float, b: float, c: float) -> bool:
         return (a < b < c) or (a > b > c)
 
-    def az_e_hem(self, az: float) -> bool:
-        return az < pi
-
-    def az_n_hem(self, az: float) -> bool:
+    @staticmethod
+    def az_n_hem(az: float) -> bool:
         return cos(az) > 0
 
-    def nav_straight(self, track: AzEl) -> AzEl:
-        return track
+    @abstractmethod
+    def azel(self, az: Angle, el: Angle) -> tuple[Angle, Angle]:
+        pass
 
-    def nav_backhand(self, track: AzEl) -> AzEl:
-        return AzEl((track.az + pi) % (2 * pi), pi - track.el)
 
-    def nav_flip(self, track: AzEl) -> AzEl:
-        flip_el = pi / 2 - (cos(track.az - self.flip_az) * (pi / 2 - track.el))
-        return AzEl(self.flip_az, flip_el)
+class Straight(Navigator):
+    def azel(self, az: Angle, el: Angle) -> tuple[Angle, Angle]:
+        return (az, el)
 
-    def azel(self, track: AzEl) -> AzEl:
-        nav = self.nav_mode(track)
-        logger.info(
-            '%-28s%7.3f°az %7.3f°el to %7.3f°az %7.3f°el',
-            "Navigation corrected from",
-            deg(track.az),
-            deg(track.el),
-            deg(nav.az),
-            deg(nav.el),
-        )
-        return nav
+
+class Backhand(Navigator):
+    def azel(self, az: Angle, el: Angle) -> tuple[Angle, Angle]:
+        return (Angle(radians=(az.radians + pi) % (2 * pi)), Angle(radians=pi - el.radians))
+
+
+class Flip(Navigator):
+    def __init__(self, info: PassInfo) -> None:
+        '''Navigation strategy that primarily rotates el and tries to minimize az.
+
+        This prevents the wrist flip problem in high angle passes.
+
+        Parameters
+        ----------
+        info
+            The parameters of the pass to plan for
+        '''
+        super().__init__(info)
+        # halfway point between rise and (fall + halfcircle)
+        # FIXME: verify average works on circle
+        flip_az = ((info.rise.az.radians + info.fall.az.radians + pi) / 2) % (2 * pi)
+        # FIXME: I can't convince myself that this is correct yet
+        if self.az_n_hem(flip_az):
+            (flip_az,) = self.rot_pi((flip_az,))
+
+        self.flip_az = Angle(radians=flip_az)
+
+    def azel(self, az: Angle, el: Angle) -> tuple[Angle, Angle]:
+        # A flip only moves elevation so azimuth is fixed at flip_az and elevation needs to be
+        # extended across 0 - 180, passing through 90. Since the target path generally won't follow
+        # the navigated path (e.g. has a max el of 80, whereas this path must always go through 90)
+        # we need to pick the el at each step that minimizes the error between antenna and target.
+        # FIXME: Still working on reasoning this out. For example I'd expect at 0 target el this
+        #        would set 0 antenna el, but it doesn't.
+        flip_el = pi / 2 - (np.cos(az.radians - self.flip_az.radians) * (pi / 2 - el.radians))
+        return (Angle(radians=np.full(len(flip_el), self.flip_az.radians)), Angle(radians=flip_el))
+
+    def __str__(self) -> str:
+        val = super().__str__()
+        val += f" at {self.flip_az.degrees:.1f}°az"
+        return val
