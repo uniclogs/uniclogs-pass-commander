@@ -23,7 +23,7 @@ class TestSinglePass:
     ) -> Config:
         good_config.station = stationd
         good_config.rotator = rotator
-        good_config.edl = edl.addr
+        good_config.edl_dest = edl.addr
         good_config.flowgraph = flowgraph.addr
         return good_config
 
@@ -46,3 +46,16 @@ class TestSinglePass:
         rt -= 1000
 
         sp.work((pt, az, el), (pt, az, el), (rt, rv))
+
+    def test_over_thermal_limit(self, mock_config: Config, sat: Satellite) -> None:
+        mock_config.temp_limit = 24.0
+        sp = SinglePass(mock_config, lna_delay=0.0, morse_delay=0.0, cooloff_delay=0.0)
+        sp.rot.cmd_interval = 0
+
+        tk = Tracker(mock_config.observer)
+        times = tk.next_pass(sat, sat.epoch)
+        (pt, az, el), (rt, rv) = tk.track(sat, times)
+        pt += 1000
+        rt += 1000
+        with pytest.raises(RuntimeError, match="^Temperature too high"):
+            sp.work((pt, az, el), (pt, az, el), (rt, rv))

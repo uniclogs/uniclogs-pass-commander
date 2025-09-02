@@ -19,6 +19,7 @@ class TestConfig:
             f.flush()
         conf = Config(path)
         assert conf.sat_id == good_toml['Main']['satellite']
+        assert conf.min_el.degrees == good_toml['Main']['minimum-pass-elevation']
         assert conf.owmid == good_toml['Main']['owmid']
         assert conf.edl == ("", good_toml['Main']['edl_port'])
         assert conf.txgain == good_toml['Main']['txgain']
@@ -29,6 +30,7 @@ class TestConfig:
         assert conf.observer.latitude.degrees == good_toml['Observer']['lat']
         assert conf.observer.longitude.degrees == good_toml['Observer']['lon']
         assert conf.observer.elevation.m == good_toml['Observer']['alt']
+        assert conf.temp_limit == good_toml['Observer']['temperature-limit']
         assert conf.name == good_toml['Observer']['name']
         for field in dataclasses.fields(conf):
             # The toml string class, a subclass of str, was leaking through conf
@@ -42,11 +44,14 @@ class TestConfig:
             )
         assert set(conf.tle_cache) == set(good_toml['TleCache'])
 
-        # satellite, owmid, edl_port, TleCache is optional
+        # satellite, minimum-pass-elevation, owmid, edl_port, temperature-limit, TleCache are
+        # optional
         del good_toml['Main']['satellite']
+        del good_toml['Main']['minimum-pass-elevation']
         del good_toml['Main']['owmid']
         del good_toml['Main']['edl_port']
         del good_toml['TleCache']
+        del good_toml['Observer']['temperature-limit']
         path = tmp_path / 'optional.toml'
         with path.open('w+') as f:
             tomlkit.dump(good_toml, f)

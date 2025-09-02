@@ -9,6 +9,7 @@ import tomlkit
 from sgp4 import earth_gravity, io
 from skyfield.api import E, N, wgs84
 from skyfield.toposlib import GeographicPosition
+from skyfield.units import Angle
 from tomlkit.items import Table
 from tomlkit.toml_document import TOMLDocument
 
@@ -140,6 +141,7 @@ class Config:
 
     # Main
     sat_id: str = ''
+    min_el: Angle = Angle(degrees=15.0)  # noqa: RUF009 __post_init__ will create a copy
     owmid: str = ''
     edl: tuple[str, int] = ('', 10025)
     txgain: int = 2
@@ -157,6 +159,9 @@ class Config:
     cal: AzEl = AzEl(0, 0)
     slew: AzEl | None = None
     beam_width: float | None = None
+    # FIXME: the limit should be retrieved from stationd instead of our toml but that feature
+    #        doesn't exist.
+    temp_limit: float = 40.0
 
     # Satellite
     tle_cache: TleCache = field(default_factory=dict)
@@ -196,6 +201,7 @@ class Config:
 
         main = _pop_table(config, 'Main')
         self.sat_id = str(_pop(main, 'satellite', str, self.sat_id))
+        self.min_el = Angle(degrees=_pop(main, 'minimum-pass-elevation', Real, self.min_el.degrees))
         self.owmid = str(_pop(main, 'owmid', str, self.owmid))
         self.edl = ('', int(_pop(main, 'edl_port', int, self.edl[1])))
         self.txgain = int(_pop(main, 'txgain', int))
@@ -221,6 +227,7 @@ class Config:
                 observer.display_name, 'lon', self.observer.longitude.degrees
             )
         self.name = str(_pop(observer, 'name', str))  # XMLRPC can't handle toml subclass
+        self.temp_limit = float(_pop(observer, 'temperature-limit', Real, self.temp_limit))
 
         self.tle_cache = dict(_pop_table(config, 'TleCache', {}))
         # validate TLEs

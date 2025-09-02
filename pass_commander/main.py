@@ -89,6 +89,11 @@ def handle_args() -> Namespace:  # noqa: D103
         action="count",
         help="Output additional debugging information",
     )
+    parser.add_argument(
+        "--temperature-limit",
+        type=float,
+        help="Temperature in Celsius of the station above which prevents a pass from running",
+    )
     return parser.parse_args()
 
 
@@ -152,6 +157,7 @@ def main() -> None:  # noqa: D103 C901 PLR0912 PLR0915
             )
             return
         conf.pass_count = args.pass_count
+        conf.temp_limit = args.temperature_limit or conf.temp_limit
 
         mock_edl = None
         mock_flowgraph = None

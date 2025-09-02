@@ -52,6 +52,8 @@ a set of mandatory configuration keys:
 #### [Main]
 General operation settings.
 * `satellite` (String, optional) - Default satellite ID, either index into TleCache or NORAD ID.
+* `minimum-pass-elevation` (Float or Integer, optional) - Minimum elevation that `satellite` must
+  rise above to be considered for a pass. Default: 15°
 * `owmid` (String, optional) - An API key from [OpenWeatherMap API](https://openweathermap.org/api)
 * `edl_port` (int, optional) - Port to listen for
   [EDL commands](https://oresat-c3-software.readthedocs.io/en/latest/edl.html).
@@ -73,6 +75,8 @@ Physical properties of the ground station.
 * `lon` (Float or Integer) - Station longitude in decimal notation.
 * `alt` (Integer) - Station altitude in meters.
 * `name` (String) - station name or callsign.
+* `temperature-limit` (Float or Integer, optional) - Temperature in Celsius above which stops a
+  pass from being run to protect the hardware. Default: 40°C
 
 #### [TleCache]
 Optional local cache of TLEs. Currently only 3 line TLEs are supported. Format

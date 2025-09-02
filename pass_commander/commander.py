@@ -91,6 +91,7 @@ class SinglePass:
         rotfd = linuxfd.timerfd(rtc=True, nonBlocking=True)
         radfd = linuxfd.timerfd(rtc=True, nonBlocking=True)
         posfd = linuxfd.timerfd(rtc=True, nonBlocking=True)
+        thmfd = linuxfd.timerfd(rtc=True, nonBlocking=True)
 
         # FIXME: log messages at AOS, Max el, LOS
         times, az, el = pos
@@ -112,6 +113,7 @@ class SinglePass:
             posfd.fileno(): partial(
                 self.on_pos, posfd, (iter(times), iter(az.degrees), iter(el.degrees))
             ),
+            thmfd.fileno(): partial(self.on_thermal, thmfd),
         }
 
         self.edl: socket.socket | None = None
@@ -126,12 +128,14 @@ class SinglePass:
             self.epoll.register(rotfd.fileno(), select.EPOLLIN)
             self.epoll.register(radfd.fileno(), select.EPOLLIN)
             self.epoll.register(posfd.fileno(), select.EPOLLIN)
+            self.epoll.register(thmfd.fileno(), select.EPOLLIN)
 
             aosfd.settime(aos.utc_datetime().timestamp(), absolute=True)
             losfd.settime(los.utc_datetime().timestamp(), absolute=True)
             rotfd.settime(nav[0][0].utc_datetime().timestamp(), absolute=True)
             radfd.settime(rv[0][0].utc_datetime().timestamp(), absolute=True)
             posfd.settime(pos[0][0].utc_datetime().timestamp(), absolute=True)
+            thmfd.settime(self.ts.now().utc_datetime().timestamp(), absolute=True)
 
             stop = False
             while not stop:
@@ -142,9 +146,6 @@ class SinglePass:
                             break
                     except StopIteration:
                         self.epoll.unregister(fd)
-                    except Exception:
-                        logger.exception("Event loop exception")
-                        stop = True
         except Exception:
             # It'll take a while to get through the finally block so notify the user early on error
             logger.exception("!!Work pass interrupted:")
@@ -281,16 +282,26 @@ class SinglePass:
         self.rad.set_rx_frequency(self.current_rv)
         return True
 
+    def on_thermal(self, timer: linuxfd.timerfd, _event: int) -> bool:
+        timer.read()
+
+        degc = self.sta.gettemp()
+        if degc > self.conf.temp_limit:
+            logger.info(
+                "Temperature is too high (%.1f°C > %.1f°C). Skipping this pass.",
+                degc,
+                self.conf.temp_limit,
+            )
+            raise RuntimeError("Temperature too high")
+        timer.settime(self.ts.now().utc_datetime().timestamp() + 30, absolute=True)
+        return True
+
 
 class Commander:
     def __init__(self, conf: Config) -> None:
         '''Create the main pass coordinator.'''
         self.conf = conf
         self.track = Tracker(conf.observer, owmid=conf.owmid)
-
-        # FIXME: should these go in config?
-        self.max_temp = 30.0
-        self.min_el = Angle(degrees=15)
         self.singlepass = SinglePass(conf)
 
     def require_clock_sync(self) -> None:
@@ -328,7 +339,7 @@ class Commander:
             sat = Satellite(
                 self.conf.sat_id, tle_cache=self.conf.tle_cache, local_only='con' in self.conf.mock
             )
-            np = self.track.next_pass(sat, min_el=self.min_el)
+            np = self.track.next_pass(sat, min_el=self.conf.min_el)
             if np is None:
                 # FIXME: sleep until next TLE?
                 raise RuntimeError("No pass found")
@@ -362,21 +373,13 @@ class Commander:
             self.require_clock_sync()
             sat, np = self.sleep_until_next_pass()
 
-            degc = self.singlepass.sta.gettemp()
-            if degc > self.max_temp:
-                logger.info(
-                    "Temperature is too high (%f°C > %f°C). Skipping this pass.",
-                    degc,
-                    self.max_temp,
-                )
-            else:
-                # Pre-compute pass time/alt/az/rv
-                temp, pressure = self.track.weather()
-                logger.info("Current weather: %f°C %f mBar", temp, pressure)
+            # Pre-compute pass time/alt/az/rv
+            temp, pressure = self.track.weather()
+            logger.info("Current weather: %f°C %f mBar", temp, pressure)
 
-                pos, rv = self.track.track(sat, np, temp, pressure)
-                nav = self.singlepass.rot.path(np, pos)
-                self.singlepass.work(pos, nav, rv)
+            pos, rv = self.track.track(sat, np, temp, pressure)
+            nav = self.singlepass.rot.path(np, pos)
+            self.singlepass.work(pos, nav, rv)
 
             seconds = timedelta(days=np.fall.time - self.track.ts.now()).total_seconds()
             if seconds > 0:
