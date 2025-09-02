@@ -10,13 +10,16 @@ logger = logging.getLogger(__name__)
 
 
 class Stationd(Thread):
-    def __init__(self, addr: tuple[str, int] | None = None) -> None:
+    def __init__(self, addr: tuple[str, int] | None = None, temperature: float = 25.0) -> None:
         '''Thread that locally simulates stationd for testing.
 
         Parameters
         ----------
         addr
             IP and port to listen with, usually localhost or some loopback
+        temperature
+            The default temperature to return from gettemp. Can be changed at runtime via
+            self.temperature
         '''
         super().__init__(name=self.__class__.__name__, daemon=True)
         if addr is None:
@@ -25,6 +28,7 @@ class Stationd(Thread):
         self._s.bind(addr)
         self._addr: tuple[str, int] = self._s.getsockname()
         self._r, self._w = os.pipe2(os.O_NONBLOCK)
+        self.temperature = temperature
 
     @property
     def addr(self) -> tuple[str, int]:
@@ -36,7 +40,7 @@ class Stationd(Thread):
         # crashing.
         words = action.split()
         if len(words) == 1 and words[0] == 'gettemp':
-            return "temp: 25"
+            return f"temp: {self.temperature}"
         if len(words) == 3:
             if words[0] not in self.state:
                 return 'FAIL: Invalid Command'
