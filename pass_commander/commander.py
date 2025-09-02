@@ -4,6 +4,7 @@ import socket
 from datetime import timedelta
 from functools import partial
 from inspect import signature
+from math import atan2, tau
 from time import sleep
 
 import linuxfd
@@ -11,6 +12,7 @@ import numpy as np
 from jeepney import DBusAddress, Properties
 from jeepney.io.blocking import open_dbus_connection
 from skyfield.api import Time, load
+from skyfield.toposlib import GeographicPosition
 from skyfield.units import Angle, Velocity
 
 from .config import AzEl, Config
@@ -388,6 +390,31 @@ class Commander:
             count -= 1
 
     # Testing stuff goes below here
+
+    def point(self, coord: GeographicPosition) -> None:
+        # The real proper way of doing heading on a sphere involves the haversine formula but I
+        # don't really want to implement it myself and also pull in a library just for this. Using
+        # arctan assumes a flat plane but I claim (without having done any math whatsoever) that
+        # this is sufficient since we're not intending to point at points past the horizon and also
+        # not use this in the arctic circle.
+        # FIXME: before we deploy a uniclogs station in Svalbard (one day I promise)
+        n = coord.latitude.radians - self.conf.observer.latitude.radians
+        e = coord.longitude.radians - self.conf.observer.longitude.radians
+        # For trig functions like atan2 we treat N as x and E as y. It also outputs in the -180 -
+        # 180 range but we want 0 - 360.
+        az = atan2(e, n) % tau
+
+        # A simulated pointing pass is two points, one at now with the appropriate azimuth, and one
+        # forever far in the future that won't ever reasonably be reached.
+        now = self.track.ts.now()
+        # Python can't represent dates more than 10,000 years in the future and timerfds don't do
+        # 10,000 days(?) so 1,000 days is now forever.
+        times = self.track.ts.linspace(now, now + 1000, 2)
+        pos = (times, Angle(radians=[az, az]), Angle(degrees=[0, 0]))
+        nav = (times, Angle(radians=[az, az]), Angle(degrees=[0, 0]))
+        rv = (times, Velocity.m_per_s([0, 0]))
+
+        self.singlepass.work(pos, nav, rv)
 
     def dryrun(self) -> None:
         sat = Satellite(

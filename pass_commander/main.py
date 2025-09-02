@@ -3,6 +3,8 @@ from argparse import ArgumentParser, Namespace, RawTextHelpFormatter
 from pathlib import Path
 from textwrap import dedent
 
+from skyfield.api import E, N, wgs84
+
 from . import config, mock
 from .commander import Commander
 
@@ -64,7 +66,6 @@ def handle_args() -> Namespace:  # noqa: D103
         ),
     )
     parser.add_argument(
-        "-p",
         "--pass-count",
         type=int,
         default=9999,
@@ -94,6 +95,11 @@ def handle_args() -> Namespace:  # noqa: D103
         type=float,
         help="Temperature in Celsius of the station above which prevents a pass from running",
     )
+    parser.add_argument(
+        "-p",
+        "--point",
+        help="Point antenna at a given coordinate and start a pass. Format: <lat>,<lon> in decimal",
+    )
     return parser.parse_args()
 
 
@@ -107,7 +113,6 @@ def main() -> None:  # noqa: D103 C901 PLR0912 PLR0915
     logging.basicConfig(
         level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)-25s: %(message)s'
     )
-    logging.getLogger("apscheduler").setLevel(logging.ERROR)
 
     args = handle_args()
     if args.config.is_dir():
@@ -188,7 +193,10 @@ def main() -> None:  # noqa: D103 C901 PLR0912 PLR0915
         commander = Commander(conf)
 
         try:
-            if args.action == 'run':
+            if args.point is not None:
+                lat, lon = args.point.split(',')
+                commander.point(wgs84.latlon(float(lat) * N, float(lon) * E, 50))
+            elif args.action == 'run':
                 commander.autorun(count=conf.pass_count)
             elif args.action == 'dryrun':
                 commander.dryrun()
