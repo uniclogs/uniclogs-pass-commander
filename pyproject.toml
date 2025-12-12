@@ -1,9 +1,10 @@
 [build-system]
-requires = ["setuptools>=75", "setuptools-scm>=8"]
+requires = ["setuptools", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "pass-commander"
+description = "The controller for local UniClOGS functions."
 requires-python = ">=3.11"
 license = {text = "GPL-3.0"}
 dynamic = ["version"]
@@ -22,12 +23,14 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "build >= 1.2.2",
-    "mypy >= 0.942",
-    "pytest >= 8.4.0",
+    "mypy >= 1.17.0",
+    "pytest >= 9.0.0",
     "types-requests >= 2.25",
     "responses >= 0.25.6",
     "ruff >= 0.8.0",
-    "pytest-cov>=6.2.0",
+    "pytest-cov>=7.0.0",
+    "setuptools>=80",
+    "setuptools-scm>=9",
 ]
 
 [project.scripts]
