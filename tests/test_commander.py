@@ -60,7 +60,7 @@ class TestSinglePass:
         (pt, az, el), (rt, rv) = tk.track(sat, times)
         pt += 1000
         rt += 1000
-        with pytest.raises(RuntimeError, match="^Temperature too high"):
+        with pytest.raises(RuntimeError, match=r"^Temperature too high"):
             sp.work((pt, az, el), (pt, az, el), (rt, rv))
 
 

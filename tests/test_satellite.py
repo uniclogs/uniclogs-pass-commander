@@ -38,7 +38,7 @@ class TestSatellite:
         for name in self.names:
             Satellite(name, tle_cache=cache, local_only=True)
 
-        with pytest.raises(ValueError, match="^Invalid satellite identifier"):
+        with pytest.raises(ValueError, match=r"^Invalid satellite identifier"):
             Satellite('invalid', tle_cache=cache, local_only=True)
 
     @responses.activate
@@ -69,7 +69,7 @@ class TestSatellite:
 
         Satellite(self.names[1])
 
-        with pytest.raises(ValueError, match="^Invalid satellite identifier"):
+        with pytest.raises(ValueError, match=r"^Invalid satellite identifier"):
             Satellite('missing')
 
         with pytest.raises(requests.exceptions.HTTPError):
