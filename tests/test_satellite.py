@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Final
 
 import pytest
@@ -32,17 +33,17 @@ class TestSatellite:
     ]
 
     @responses.activate
-    def test_cache(self) -> None:
+    def test_cache(self, tmp_path: Path) -> None:
         cache = dict.fromkeys(self.names, self.tle)
 
         for name in self.names:
-            Satellite(name, tle_cache=cache, local_only=True)
+            Satellite(name, tmp_path, tle_cache=cache, local_only=True)
 
         with pytest.raises(ValueError, match=r"^Invalid satellite identifier"):
-            Satellite('invalid', tle_cache=cache, local_only=True)
+            Satellite('invalid', tmp_path, tle_cache=cache, local_only=True)
 
     @responses.activate
-    def test_celestrak(self) -> None:
+    def test_celestrak(self, tmp_path: Path) -> None:
         # valid
         # missing
         # timeout
@@ -67,16 +68,16 @@ class TestSatellite:
         responses.add(missing)
         responses.add(forbidden)
 
-        Satellite(self.names[1])
+        Satellite(self.names[1], tmp_path)
 
         with pytest.raises(ValueError, match=r"^Invalid satellite identifier"):
-            Satellite('missing')
+            Satellite('missing', tmp_path)
 
         with pytest.raises(requests.exceptions.HTTPError):
-            Satellite('forbidden')
+            Satellite('forbidden', tmp_path)
 
     @responses.activate
-    def test_cache_fallback(self) -> None:
+    def test_cache_fallback(self, tmp_path: Path) -> None:
         fallback = responses.Response(
             method="GET",
             url="https://celestrak.org/NORAD/elements/gp.php?NAME=fallback",
@@ -84,4 +85,4 @@ class TestSatellite:
         )
         responses.add(fallback)
 
-        Satellite('fallback', tle_cache={'fallback': self.tle})
+        Satellite('fallback', tmp_path, tle_cache={'fallback': self.tle})

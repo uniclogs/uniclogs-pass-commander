@@ -30,7 +30,7 @@ def handle_args() -> Namespace:  # noqa: D103
     parser.add_argument(
         "-c",
         "--config",
-        default="~/.config/OreSat/pass_commander.toml",
+        default=config.Config.dir / "pass_commander.toml",
         type=Path,
         help=dedent(
             """\
@@ -54,13 +54,14 @@ def handle_args() -> Namespace:  # noqa: D103
         "-m",
         "--mock",
         action="append",
-        choices=("tx", "rot", "con", "all"),
+        choices=("tx", "rot", "con", "tle", "all"),
         help=dedent(
             """\
             Use a simulated (mocked) external dependency, not the real thing
             - tx: No PTT or EDL bytes sent to flowgraph
             - rot: No actual movement commanded for the rotator
-            - con: Don't use network services - TLEs, weather, rot2prog, stationd
+            - con: Don't use network services - weather, rot2prog, stationd
+            - tle: Only use locally saved TLEs, don't fetch from the internet (CelesTrak)
             - all: All of the above
             Can be issued multiple times, e.g. '-m tx -m rot' will disable tx and rotator"""
         ),
@@ -152,7 +153,7 @@ def main() -> None:  # noqa: D103 C901 PLR0912 PLR0915
     else:
         conf.mock = set(args.mock or [])
         if 'all' in conf.mock:
-            conf.mock = {'tx', 'rot', 'con'}
+            conf.mock = {'tx', 'rot', 'con', 'tle'}
         # Favor command line values over config file values
         conf.txgain = args.tx_gain or conf.txgain
         conf.sat_id = args.satellite or conf.sat_id

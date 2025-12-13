@@ -32,9 +32,17 @@ Running `pass-commander --template` will generate a
 template configuration file. You should receive instructions for editing it. Go
 do that now (see below for detailed description).
 
-When your config is all set up, run with `pass-commander`. See the
-`--help` flag for more options. For example `pass-commander -s 60525
--m all -a dryrun`.
+When your config is all set up, run with `pass-commander`. See the `--help` flag
+for more options. Initially you'll not have any saved TLEs so either find one
+for your satellite of interest and add it to `TleCache` in `pass_commander.toml`
+or run without the `--mock tle` flag to download one locally:
+```sh
+pass-commander --satellite 60525 --action dryrun -m tx -m con -m rot
+```
+After that the `--mock all` flag can be used for brevity:
+```sh
+pass-commander --satellite 60525 --action dryrun --mock all
+```
 
 Testing without rotctld, stationd and a running radio flowgraph is partially
 supported. See the `--mock` flag, especially `-m all`.

@@ -169,6 +169,8 @@ class Config:
     # Command line only
     mock: set[str] = field(default_factory=set)
     pass_count: int = 9999
+    # FIXME: use XDG_CONFIG_HOME
+    dir: PosixPath = PosixPath('~/.config/OreSat').expanduser()  # noqa: RUF009
 
     def __post_init__(self, path: Path) -> None:
         '''Load a config from a given file.
@@ -188,8 +190,11 @@ class Config:
         path
             Path to the config file, usually pass_commander.toml
         '''
+        path = path.expanduser()
+        self.dir = PosixPath(path.parent)
+
         try:
-            config = tomlkit.parse(path.expanduser().read_text())
+            config = tomlkit.parse(path.read_text())
         except tomlkit.exceptions.ParseError as e:
             raise InvalidTomlError(*e.args) from e
         except FileNotFoundError as e:
@@ -259,7 +264,7 @@ class Config:
 
         hosts = tomlkit.table()
         hosts['radio'] = str(cls.flowgraph[0])
-        hosts['station'] = str(cls.station)
+        hosts['station'] = str(cls.station[0])
         hosts['rotator'] = str(cls.rotator)
 
         observer = tomlkit.table()

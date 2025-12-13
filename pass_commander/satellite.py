@@ -1,6 +1,7 @@
 import logging
 import re
 from pathlib import Path
+from time import time
 
 import requests
 from skyfield.api import EarthSatellite
@@ -12,7 +13,12 @@ logger = logging.getLogger(__name__)
 
 class Satellite(EarthSatellite):  # type: ignore[misc]
     def __init__(
-        self, sat_id: str, *, tle_cache: TleCache | None = None, local_only: bool = False
+        self,
+        sat_id: str,
+        conf_dir: Path,
+        *,
+        tle_cache: TleCache | None = None,
+        local_only: bool = False,
     ) -> None:
         '''Fetch a TLE and build a satellite.
 
@@ -32,6 +38,9 @@ class Satellite(EarthSatellite):  # type: ignore[misc]
         sat_id
             The ID of the satellite, either as an International Designator, a NORAD Satellite
             Catalog number, or Catalog satellite name.
+        conf_dir
+            Path to the directory to save TLEs from Celestrak in. When in doubt the same directory
+            that pass_commander.toml is in is good.
         local_only
             If true, do not use the internet for TLE lookup, only tle_cache or Gpredict.
         tle_cache
@@ -42,25 +51,34 @@ class Satellite(EarthSatellite):  # type: ignore[misc]
             query = "INTDES"
         elif re.match(r"^\d{1,9}$", sat_id):
             query = "CATNR"
+        filename = conf_dir / f'{query}-{sat_id}.txt'
 
-        tle = None
-        if tle is None and not local_only:
-            # see https://celestrak.org/NORAD/documentation/gp-data-formats.php
-            # FIXME: 2 hour cache. This must add the data to the TLE cache. Just use skytraq?
+        # see https://celestrak.org/NORAD/documentation/gp-data-formats.php
+        # In particular a 2 hour minimum cache time. In practice I think we get one new TLE per day
+        # so here we wait 0.5 days. FIXME: Add to TLE cache/save in pass_commander.toml? Depends on
+        # pydantic.
+        expired = not filename.exists() or (time() - filename.stat().st_mtime > 12 * 60 * 60)
+        if not local_only and expired:
+            logger.info("fetching TLE from celestrak for %s", sat_id)
             r = requests.get(
                 "https://celestrak.org/NORAD/elements/gp.php",
                 params={query: sat_id},
                 timeout=10,
             )
             r.raise_for_status()
-            lines = r.text.splitlines()
+            filename.write_text(r.text)
+
+        tle = None
+        if tle is None and filename.exists():
+            logger.info("using cached TLE from %s", filename)
+            lines = filename.read_text().splitlines()
             if lines[0] == "No GP data found":
                 logger.info("No results for %s at celestrak", sat_id)
             else:
                 tle = lines
 
         if tle is None and tle_cache and sat_id in tle_cache:
-            logger.info("using cached TLE")
+            logger.info("using cached TLE from pass_commander.toml")
             tle = tle_cache[sat_id]
 
         if tle is None and query == "CATNR":

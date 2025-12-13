@@ -339,7 +339,10 @@ class Commander:
 
         while True:
             sat = Satellite(
-                self.conf.sat_id, tle_cache=self.conf.tle_cache, local_only='con' in self.conf.mock
+                self.conf.sat_id,
+                self.conf.dir,
+                tle_cache=self.conf.tle_cache,
+                local_only='tle' in self.conf.mock,
             )
             np = self.track.next_pass(sat, min_el=self.conf.min_el)
             if np is None:
@@ -418,7 +421,10 @@ class Commander:
 
     def dryrun(self) -> None:
         sat = Satellite(
-            self.conf.sat_id, tle_cache=self.conf.tle_cache, local_only='con' in self.conf.mock
+            self.conf.sat_id,
+            self.conf.dir,
+            tle_cache=self.conf.tle_cache,
+            local_only='tle' in self.conf.mock,
         )
         np = self.track.next_pass(sat, min_el=Angle(degrees=80), lookahead=timedelta(days=30))
         if np is None:
