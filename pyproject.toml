@@ -7,8 +7,8 @@ name = "uniclogs-pass-commander"
 description = "The controller for local UniClOGS functions."
 requires-python = ">=3.11"
 license = {text = "GPL-3.0"}
+readme = "README.md"
 dynamic = ["version"]
-
 dependencies = [
     "jeepney >= 0.8.0",
     "linuxfd >= 1.5",
