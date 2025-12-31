@@ -1,9 +1,9 @@
 # UniClOGS Pass Commander
 This software controls the local functions of a
-[UniClOGS](https://www.oresat.org/technologies/ground-stations) for sending
-commands to the [OreSat0](https://www.oresat.org/satellites/oresat0) and
-[OreSat0.5](https://www.oresat.org/satellites/oresat0-5)
-[CubeSats](https://en.wikipedia.org/wiki/CubeSat).
+[UniClOGS](https://www.oresat.org/technologies/ground-stations) ground station
+for sending commands to [CubeSats](https://en.wikipedia.org/wiki/CubeSat), as
+used with the [OreSat0](https://www.oresat.org/satellites/oresat0)
+and [OreSat0.5](https://www.oresat.org/satellites/oresat0-5) missions.
 
 ## Major functions
 * Tracks satellites using the excellent [Skyfield](https://rhodesmill.org/skyfield/)
@@ -22,6 +22,8 @@ commands to the [OreSat0](https://www.oresat.org/satellites/oresat0) and
   to manage Doppler shifting and to send command packets
 
 ## Installing
+Requires Linux with Python 3.11 or greater.
+
 ```sh
 git clone https://github.com/uniclogs/uniclogs-pass-commander.git
 sudo apt install python3-pip
