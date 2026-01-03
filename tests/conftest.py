@@ -119,6 +119,6 @@ tles = [
 
 
 @pytest.fixture(params=tles)
-def sat(request) -> Satellite:  # noqa: ANN001
+def sat(request, tmp_path: Path) -> Satellite:  # noqa: ANN001
     name = request.param[0]
-    return Satellite(name, tle_cache={name: request.param}, local_only=True)
+    return Satellite(name, tmp_path, tle_cache={name: request.param}, local_only=True)

@@ -1,9 +1,9 @@
 # UniClOGS Pass Commander
 This software controls the local functions of a
-[UniClOGS](https://www.oresat.org/technologies/ground-stations) for sending
-commands to the [OreSat0](https://www.oresat.org/satellites/oresat0) and
-[OreSat0.5](https://www.oresat.org/satellites/oresat0-5)
-[CubeSats](https://en.wikipedia.org/wiki/CubeSat).
+[UniClOGS](https://www.oresat.org/technologies/ground-stations) ground station
+for sending commands to [CubeSats](https://en.wikipedia.org/wiki/CubeSat), as
+used with the [OreSat0](https://www.oresat.org/satellites/oresat0)
+and [OreSat0.5](https://www.oresat.org/satellites/oresat0-5) missions.
 
 ## Major functions
 * Tracks satellites using the excellent [Skyfield](https://rhodesmill.org/skyfield/)
@@ -22,6 +22,8 @@ commands to the [OreSat0](https://www.oresat.org/satellites/oresat0) and
   to manage Doppler shifting and to send command packets
 
 ## Installing
+Requires Linux with Python 3.11 or greater.
+
 ```sh
 git clone https://github.com/uniclogs/uniclogs-pass-commander.git
 sudo apt install python3-pip
@@ -32,9 +34,17 @@ Running `pass-commander --template` will generate a
 template configuration file. You should receive instructions for editing it. Go
 do that now (see below for detailed description).
 
-When your config is all set up, run with `pass-commander`. See the
-`--help` flag for more options. For example `pass-commander -s 60525
--m all -a dryrun`.
+When your config is all set up, run with `pass-commander`. See the `--help` flag
+for more options. Initially you'll not have any saved TLEs so either find one
+for your satellite of interest and add it to `TleCache` in `pass_commander.toml`
+or run without the `--mock tle` flag to download one locally:
+```sh
+pass-commander --satellite 60525 --action dryrun -m tx -m con -m rot
+```
+After that the `--mock all` flag can be used for brevity:
+```sh
+pass-commander --satellite 60525 --action dryrun --mock all
+```
 
 Testing without rotctld, stationd and a running radio flowgraph is partially
 supported. See the `--mock` flag, especially `-m all`.

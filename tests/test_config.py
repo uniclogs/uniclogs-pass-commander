@@ -165,9 +165,22 @@ class TestConfig:
             Config(path)
 
     def test_template(self, tmp_path: Path) -> None:
-        Config.template(tmp_path / "faketemplate.toml")
+        path = tmp_path / "faketemplate.toml"
+        Config.template(path)
+
+        # Trying to load the template should fail because template text hasn't been removed
         with pytest.raises(config.TemplateTextError):
-            Config(tmp_path / "faketemplate.toml")
+            Config(path)
+
+        # But if we remove the template text
+        with path.open('r') as f:
+            contents = f.read()
+        contents = contents.replace('<', '')
+        contents = contents.replace('>', '')
+        with path.open('w') as f:
+            f.write(contents)
+        # then it should load
+        Config(path)
 
     def test_template_exists(self, tmp_path: Path) -> None:
         conf = tmp_path / "config.toml"
