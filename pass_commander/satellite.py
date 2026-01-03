@@ -72,6 +72,9 @@ class Satellite(EarthSatellite):  # type: ignore[misc]
         if tle is None and filename.exists():
             logger.info("using cached TLE from %s", filename)
             lines = filename.read_text().splitlines()
+            # Not documented but CelesTrak currently returns this string if the previous query
+            # didn't match an object it knows about. We have to cache it anyway to respect their
+            # policy.
             if lines[0] == "No GP data found":
                 logger.info("No results for %s at celestrak", sat_id)
             else:
